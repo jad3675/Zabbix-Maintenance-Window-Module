@@ -1,0 +1,83 @@
+<?php
+/**
+ * Maintenance Loader configuration.
+ *
+ * Copy this file to config.php in the same directory and edit it.
+ * config.php is NOT stored in the Zabbix database. Lock it down:
+ *
+ *   chown root:apache config.php   (or root:nginx / root:www-data)
+ *   chmod 640 config.php
+ *
+ * If config.php is missing the module still loads, but every action will
+ * refuse with a clear error instead of half-working.
+ */
+
+return [
+
+	/*
+	 * ------------------------------------------------------------------
+	 * Elevated API access
+	 * ------------------------------------------------------------------
+	 * maintenance.create / .get / .delete require Admin or Super admin.
+	 * The whole point of this module is to let a plain User schedule
+	 * maintenance, so the maintenance calls are made with a dedicated
+	 * service token instead of the logged-in user's session.
+	 *
+	 * Host resolution is always done as the logged-in user, so nobody can
+	 * put a host into maintenance that they cannot already see.
+	 *
+	 * Create the token under Users -> API tokens, owned by a Super admin
+	 * service account (e.g. svc-maintloader) with a role that has API
+	 * access restricted to: maintenance.*, host.get, hostinterface.get
+	 */
+
+	// Full URL to api_jsonrpc.php. Loopback is fine and preferred.
+	// In a containerised frontend this is usually the container's own port.
+	'api_url' => 'http://127.0.0.1:8080/api_jsonrpc.php',
+
+	// Either put the token here...
+	'api_token' => '',
+
+	// ...or point at a file containing nothing but the token. Takes
+	// precedence over api_token if set and readable.
+	'token_file' => '',
+
+	// Verify TLS on api_url. Only turn this off for a self-signed cert on
+	// a loopback address you control.
+	'verify_tls' => true,
+
+	// Seconds.
+	'api_timeout' => 15,
+
+	/*
+	 * ------------------------------------------------------------------
+	 * Behaviour
+	 * ------------------------------------------------------------------
+	 */
+
+	// Every maintenance window created here gets this name prefix. It is
+	// how the module finds its own windows again, and it is the guard that
+	// stops this module deleting maintenance windows it did not create.
+	// If you change it after go-live, existing windows become invisible
+	// to the module. Delete them the normal way first.
+	'name_prefix' => '[ML]',
+
+	// Refuse a paste larger than this many resolved hosts.
+	'max_hosts' => 2000,
+
+	// Longest window a user may schedule, in seconds. 604800 = 7 days.
+	'max_duration' => 604800,
+
+	// Default for the "Collect data" toggle. 1 = with data collection
+	// (metrics keep flowing, alerts are suppressed), 0 = without.
+	'default_collect_data' => 1,
+
+	// Restrict the module to members of these user groups, by name.
+	// Empty array = anyone who can reach the page. Super admins always pass.
+	//   'allowed_user_groups' => ['NOC', 'ITOCC Operators'],
+	'allowed_user_groups' => [],
+
+	// Only let users end (delete) windows they created themselves.
+	// false = anyone with module access can end any window the module made.
+	'own_windows_only' => false,
+];

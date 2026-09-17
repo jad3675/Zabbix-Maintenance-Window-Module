@@ -1,0 +1,40 @@
+{
+	"manifest_version": 2.0,
+	"id": "maintloader",
+	"name": "Maintenance Loader",
+	"namespace": "MaintLoader",
+	"version": "1.1.0",
+	"author": "John Danhires",
+	"description": "Paste or upload a list of hosts, verify them, and drop them all into a Zabbix maintenance window. Works for non-admin users via a scoped service token.",
+	"actions": {
+		"maintloader.view": {
+			"class": "View",
+			"view": "maintloader.view",
+			"layout": "layout.htmlpage"
+		},
+		"maintloader.verify": {
+			"class": "Verify",
+			"layout": "layout.json"
+		},
+		"maintloader.create": {
+			"class": "Create",
+			"layout": "layout.json"
+		},
+		"maintloader.update": {
+			"class": "Update",
+			"layout": "layout.json"
+		},
+		"maintloader.list": {
+			"class": "MaintList",
+			"layout": "layout.json"
+		},
+		"maintloader.end": {
+			"class": "End",
+			"layout": "layout.json"
+		}
+	},
+	"assets": {
+		"css": ["maintloader.css"],
+		"js": ["maintloader.js"]
+	}
+}
