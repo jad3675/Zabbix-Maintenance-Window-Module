@@ -44,7 +44,7 @@ abstract class Base extends CController {
 	 * ----------------------------------------------------------------------
 	 */
 
-	protected function config(string $key = null, $default = null) {
+	protected function config(?string $key = null, $default = null) {
 		if (self::$config === null) {
 			$file = dirname(__DIR__).'/config.php';
 

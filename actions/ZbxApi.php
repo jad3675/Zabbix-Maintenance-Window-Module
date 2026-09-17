@@ -75,7 +75,10 @@ class ZbxApi {
 		$errno = curl_errno($ch);
 		$err = curl_error($ch);
 		$code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-		curl_close($ch);
+
+		// No curl_close(). Since PHP 8.0 the handle is an object freed by the
+		// garbage collector, and the call was deprecated outright in 8.5.
+		unset($ch);
 
 		if ($errno !== 0) {
 			throw new \Exception(sprintf('Cannot reach the Zabbix API at %s: %s', $this->url, $err));

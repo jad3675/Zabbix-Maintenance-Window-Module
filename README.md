@@ -150,6 +150,18 @@ The menu entry is visible to everyone. The permission check lives in the
 controllers, so a user outside `allowed_user_groups` gets a denied page rather
 than a hidden link. Fix that with a menu-level check if it bothers you.
 
+## PHP version notes
+
+Written against PHP 8.0 through 8.5. Two things bite on 8.5 specifically and
+are already handled: nullable parameters are declared `?string` rather than
+relying on the implicit form, and `curl_close()` is not called (it has been a
+no-op since 8.0 and was deprecated outright in 8.5).
+
+If the loader page still shows deprecation notices, check whether they name a
+file under `modules/` or under Zabbix's own `include/` before blaming this
+module. Zabbix 7.4 does not officially certify PHP 8.5, so its own code emits
+some.
+
 ## Known rough edges
 
 - **The menu item shows for all users** (see above).
