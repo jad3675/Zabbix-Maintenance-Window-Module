@@ -19,25 +19,25 @@ class Verify extends Base {
 	}
 
 	protected function doAction(): void {
-		$tokens = $this->parseTokens($this->getInput('hosts'));
+		$rows = $this->parseRows($this->getInput('hosts'));
 
-		if (!$tokens) {
+		if (!$rows) {
 			$this->jsonError(_('Nothing to verify. Paste a host list or upload a CSV.'));
 			return;
 		}
 
 		$max = (int) $this->config('max_hosts', 2000);
 
-		if (count($tokens) > $max) {
+		if (count($rows) > $max) {
 			$this->jsonError(sprintf(
-				_('That is %d entries. The limit is %d. Split it into smaller batches.'),
-				count($tokens), $max
+				_('That is %d rows. The limit is %d. Split it into smaller batches.'),
+				count($rows), $max
 			));
 			return;
 		}
 
 		try {
-			$resolved = $this->resolveTokens($tokens);
+			$resolved = $this->resolveRows($rows);
 		}
 		catch (\Exception $e) {
 			$this->jsonError(_('Host lookup failed: ').$e->getMessage());
@@ -46,7 +46,7 @@ class Verify extends Base {
 
 		$rows = $resolved['rows'];
 
-		// Collapse tokens that landed on the same host (name + IP of one box).
+		// Collapse rows that landed on the same host.
 		$seen_hostids = [];
 
 		foreach ($rows as &$row) {
@@ -71,7 +71,8 @@ class Verify extends Base {
 			'duplicate' => 0,
 			'header' => 0,
 			'disabled' => 0,
-			'already' => 0
+			'already' => 0,
+			'conflict' => 0
 		];
 
 		$hostids = [];
@@ -88,6 +89,10 @@ class Verify extends Base {
 
 				if ($row['in_maintenance']) {
 					$counts['already']++;
+				}
+
+				if (!empty($row['conflicts'])) {
+					$counts['conflict']++;
 				}
 			}
 		}

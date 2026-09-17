@@ -264,12 +264,13 @@
 		var input = $('ml-input');
 
 		function countEntries() {
-			var tokens = input.value.split(/[\r\n,;\t]+/).filter(function (token) {
-				return token.trim() !== '';
+			// One line is one entry, whatever is inside it.
+			var rows = input.value.split(/\r\n|\r|\n/).filter(function (line) {
+				return line.trim() !== '';
 			});
 
-			$('ml-input-count').textContent = tokens.length
-				? tokens.length + (tokens.length === 1 ? ' entry' : ' entries')
+			$('ml-input-count').textContent = rows.length
+				? rows.length + (rows.length === 1 ? ' row' : ' rows')
 				: '';
 		}
 
@@ -386,10 +387,11 @@
 
 			[
 				chip('good', counts.ok, 'will go into maintenance'),
-				chip('bad', counts.notfound, 'not found'),
+				chip('bad', counts.notfound, 'no column matched'),
 				chip('warn', counts.ambiguous, 'ambiguous'),
-				chip('grey', counts.duplicate, 'duplicate'),
+				chip('grey', counts.duplicate, 'duplicate row'),
 				chip('grey', counts.header, 'header row'),
+				chip('warn', counts.conflict, 'columns disagree'),
 				chip('warn', counts.disabled, 'disabled in Zabbix'),
 				chip('warn', counts.already, 'already in maintenance')
 			].forEach(function (node) {
@@ -410,9 +412,9 @@
 
 		var STATUS_META = {
 			ok: {icon: '\u2713', cls: 'ok', note: ''},
-			notfound: {icon: '\u2717', cls: 'bad', note: 'No host with that name, IP or DNS that you can see'},
+			notfound: {icon: '\u2717', cls: 'bad', note: 'No column matched a host you can see'},
 			ambiguous: {icon: '!', cls: 'warn', note: 'Matches more than one host'},
-			duplicate: {icon: '\u21BA', cls: 'grey', note: 'Same host as an earlier entry'},
+			duplicate: {icon: '\u21BA', cls: 'grey', note: 'Same host as an earlier row'},
 			header: {icon: '\u2014', cls: 'grey', note: 'Looks like a column header, skipped'}
 		};
 
@@ -424,7 +426,8 @@
 
 			state.rows.forEach(function (row) {
 				var meta = STATUS_META[row.status] || STATUS_META.notfound;
-				var interesting = row.status !== 'ok' || !row.enabled || row.in_maintenance;
+				var interesting = row.status !== 'ok' || !row.enabled || row.in_maintenance
+					|| (row.conflicts || []).length > 0;
 
 				if (only_problems && !interesting) {
 					return;
@@ -432,14 +435,25 @@
 
 				var note = meta.note;
 
+				var matched = '';
+
 				if (row.status === 'ambiguous') {
 					note = 'Matches: ' + row.candidates.join(', ');
+					matched = 'col ' + row.column;
 				}
 				else if (row.status === 'duplicate') {
 					note = 'Same host as "' + row.duplicate_of + '"';
+					matched = 'col ' + row.column + ' \u00B7 ' + row.matched_on;
 				}
 				else if (row.status === 'ok') {
 					var notes = [];
+
+					// Column order decides, so say when a later column would
+					// have decided differently. That is a stale CSV, not a
+					// tie, and it is worth seeing before the window goes in.
+					(row.conflicts || []).forEach(function (c) {
+						notes.push(c);
+					});
 
 					if (!row.enabled) {
 						notes.push('host is disabled');
@@ -448,7 +462,14 @@
 						notes.push('already in maintenance');
 					}
 
-					note = notes.join(', ');
+					note = notes.join('; ');
+					matched = row.columns > 1
+						? 'col ' + row.column + ' \u00B7 ' + row.matched_on
+						: row.matched_on;
+				}
+
+				if ((row.conflicts || []).length && meta.cls === 'ok') {
+					meta = {icon: meta.icon, cls: 'warn'};
 				}
 
 				tbody.appendChild(el('tr', {class: 'ml-row-' + meta.cls}, [
@@ -456,7 +477,7 @@
 						el('span', {class: 'ml-dot ml-dot-' + meta.cls, text: meta.icon})
 					]),
 					el('td', {class: 'ml-mono', text: row.token}),
-					el('td', {class: 'ml-muted', text: row.status === 'ok' ? row.matched_on : ''}),
+					el('td', {class: 'ml-muted', text: matched}),
 					el('td', {text: row.status === 'ok' ? (row.name || row.host) : ''}),
 					el('td', {class: 'ml-mono ml-muted', text: row.status === 'ok' ? (row.ip || '') : ''}),
 					el('td', {class: 'ml-muted', text: note})
@@ -480,7 +501,7 @@
 				navigator.clipboard.writeText(missing);
 				$('ml-copy-missing').textContent = 'Copied';
 				setTimeout(function () {
-					$('ml-copy-missing').textContent = 'Copy unmatched';
+					$('ml-copy-missing').textContent = 'Copy unmatched rows';
 				}, 1500);
 			}
 		});

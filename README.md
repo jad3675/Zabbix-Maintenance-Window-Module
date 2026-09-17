@@ -51,20 +51,39 @@ for this is pointless and gives you a TLS problem you do not need.
 
 ## What it actually does
 
-**Matching.** Each pasted line is split on newline, comma, semicolon and tab,
-then matched in this order: technical host name, visible name, interface IP,
-interface DNS. So a CSV row of `core-sw-01,10.20.30.1` yields two tokens that
-both land on the same host, and the second is flagged as a duplicate rather
-than counted twice. No column mapping to configure.
+**Matching.** One line is one host. Newlines separate rows; commas, semicolons
+and tabs separate columns within a row, and the columns are treated as
+alternative identifiers for that same host, not as separate hosts.
+
+Two nested orderings, and they are not the same thing:
+
+- **By column, outermost.** Column 1 is authoritative. Columns 2, 3 and so on
+  are only consulted when the earlier ones miss. So `core-sw-01,10.20.30.1`
+  resolves on the name; if that name has been decommissioned, the row falls
+  through to the IP and still lands on one host, as one row.
+- **By kind, within a column.** Each column value is tried against technical
+  name, then visible name, then interface IP, then interface DNS.
+
+If a later column resolves to a *different* host than column 1 did, column
+order still wins, but the row is flagged and the note names the other host.
+That is a CSV that has drifted from reality, and you want to know before the
+window goes in rather than after.
+
+A row where no column matches is one "not found", not one per column. No column
+mapping to configure.
 
 `filter` in the Zabbix API is an exact SQL match, which is case-sensitive on
 PostgreSQL. Anything unmatched after the exact pass gets a second pass through
 `search` with a case-insensitive comparison in PHP, because nobody pastes
 hostnames in the case the CMDB happens to use.
 
-Rows come back tagged: matched, not found, ambiguous (one token, several
-hosts), duplicate, header row. Disabled hosts and hosts already in maintenance
-are flagged but not blocked.
+Rows come back tagged: matched, not found, ambiguous (one column value,
+several hosts), duplicate (an earlier row already claimed that host), header
+row. Disabled hosts, hosts already in maintenance, and rows whose columns
+disagree are flagged but not blocked.
+
+A header row is only skipped once nothing in it resolves, so a host
+legitimately named `device` is not silently dropped.
 
 **Creating.** Four schedule types: one time, daily, weekly, monthly.
 

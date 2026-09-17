@@ -237,44 +237,50 @@ abstract class Base extends CController {
 	 */
 
 	/**
-	 * Break a pasted blob or CSV into candidate tokens.
+	 * Break a pasted blob or CSV into rows.
 	 *
-	 * Splits on newline, comma, semicolon and tab, which means a CSV row of
-	 * "core-sw-01,10.20.30.1" simply yields two tokens that resolve to the
-	 * same host. Deduplication happens on hostid later, so that is harmless
-	 * and saves the user having to tell us which column is which.
+	 * ONE LINE IS ONE ENTRY. Newlines separate rows; commas, semicolons and
+	 * tabs separate columns within a row. A row of "core-sw-01,10.20.30.1" is
+	 * a single host described two ways, not two hosts, so resolution walks the
+	 * columns left to right and stops at the first one that hits.
 	 *
-	 * @return array [['raw' => string, 'header' => bool], ...]
+	 * @return array [['raw' => string, 'fields' => [string, ...]], ...]
 	 */
-	protected function parseTokens(string $blob): array {
-		$parts = preg_split('/[\r\n,;\t]+/', $blob);
+	protected function parseRows(string $blob): array {
 		$out = [];
-		$seen = [];
 
-		foreach ((array) $parts as $part) {
-			$token = trim((string) $part);
-			$token = trim($token, "\"'");
-			$token = trim($token);
+		foreach (preg_split('/\r\n|\r|\n/', $blob) as $line) {
+			$raw = trim((string) $line);
 
-			if ($token === '') {
+			if ($raw === '') {
 				continue;
 			}
 
-			$key = mb_strtolower($token);
+			$fields = [];
 
-			if (array_key_exists($key, $seen)) {
-				continue;
+			foreach (preg_split('/[,;\t]+/', $raw) as $field) {
+				$field = trim(trim(trim((string) $field), "\"'"));
+
+				if ($field !== '') {
+					$fields[] = $field;
+				}
 			}
 
-			$seen[$key] = true;
-
-			$out[] = [
-				'raw' => $token,
-				'header' => in_array(preg_replace('/\s+/', '', $key), self::HEADER_WORDS, true)
-			];
+			if ($fields) {
+				// Identical rows are kept, not silently merged. The hostid
+				// pass flags the second one as a duplicate, which is more
+				// honest than quietly changing the operator's row count.
+				$out[] = ['raw' => $raw, 'fields' => $fields];
+			}
 		}
 
 		return $out;
+	}
+
+	private function looksLikeHeader(string $field): bool {
+		return in_array(
+			preg_replace('/\s+/', '', mb_strtolower($field)), self::HEADER_WORDS, true
+		);
 	}
 
 	/**
@@ -317,8 +323,15 @@ abstract class Base extends CController {
 	 */
 
 	/**
-	 * Resolve tokens to hosts, matching technical name, then visible name,
-	 * then interface IP, then interface DNS.
+	 * Resolve rows to hosts.
+	 *
+	 * Two nested orderings, and they are not the same thing:
+	 *
+	 *   outer, by column   the operator's column order wins. Column 1 is the
+	 *                      authoritative identifier; later columns are only
+	 *                      consulted when the earlier ones miss.
+	 *   inner, by kind     within one column value, technical name beats
+	 *                      visible name beats interface IP beats interface DNS.
 	 *
 	 * Every lookup goes through the in-process API as the logged-in user, so
 	 * a host the user cannot read simply does not resolve. This is the
@@ -326,14 +339,17 @@ abstract class Base extends CController {
 	 *
 	 * @return array ['rows' => [...], 'hosts' => hostid => host]
 	 */
-	protected function resolveTokens(array $tokens): array {
+	protected function resolveRows(array $rows): array {
+		// Every distinct column value across every row, looked up in bulk.
 		$lookup = [];
 
-		foreach ($tokens as $token) {
-			if (!$token['header']) {
-				$lookup[] = $token['raw'];
+		foreach ($rows as $row) {
+			foreach ($row['fields'] as $field) {
+				$lookup[mb_strtolower($field)] = $field;
 			}
 		}
+
+		$lookup = array_values($lookup);
 
 		$hosts = [];
 		$index = [];
@@ -341,12 +357,7 @@ abstract class Base extends CController {
 		$remember = function (array $found, string $matched_on) use (&$hosts, &$index) {
 			foreach ($found as $host) {
 				$hosts[$host['hostid']] = $host;
-
-				foreach (['host', 'name'] as $field) {
-					if ($matched_on === $field) {
-						$index[$field][mb_strtolower($host[$field])][] = $host['hostid'];
-					}
-				}
+				$index[$matched_on][mb_strtolower($host[$matched_on])][] = $host['hostid'];
 			}
 		};
 
@@ -357,28 +368,27 @@ abstract class Base extends CController {
 			$remember(API::Host()->get([
 				'output' => $host_output,
 				'selectInterfaces' => ['ip', 'dns'],
-				'filter' => ['host' => $lookup],
-				'preservekeys' => false
+				'filter' => ['host' => $lookup]
 			]), 'host');
 
 			// 2. Visible name, exact.
 			$remember(API::Host()->get([
 				'output' => $host_output,
 				'selectInterfaces' => ['ip', 'dns'],
-				'filter' => ['name' => $lookup],
-				'preservekeys' => false
+				'filter' => ['name' => $lookup]
 			]), 'name');
 
 			// 3. Interface IP and DNS.
-			$interfaces = API::HostInterface()->get([
-				'output' => ['hostid', 'ip', 'dns'],
-				'filter' => ['ip' => $lookup]
-			]);
-
-			$interfaces = array_merge($interfaces, API::HostInterface()->get([
-				'output' => ['hostid', 'ip', 'dns'],
-				'filter' => ['dns' => $lookup]
-			]));
+			$interfaces = array_merge(
+				API::HostInterface()->get([
+					'output' => ['hostid', 'ip', 'dns'],
+					'filter' => ['ip' => $lookup]
+				]),
+				API::HostInterface()->get([
+					'output' => ['hostid', 'ip', 'dns'],
+					'filter' => ['dns' => $lookup]
+				])
+			);
 
 			$iface_hostids = [];
 
@@ -413,27 +423,22 @@ abstract class Base extends CController {
 		// used, so fall back to a LIKE search and compare in PHP.
 		$unmatched = [];
 
-		foreach ($lookup as $raw) {
-			$key = mb_strtolower($raw);
-
-			if (!isset($index['host'][$key]) && !isset($index['name'][$key])
-					&& !isset($index['ip'][$key]) && !isset($index['dns'][$key])) {
-				$unmatched[] = $raw;
+		foreach ($lookup as $value) {
+			if (!$this->indexHit($index, $value)) {
+				$unmatched[] = $value;
 			}
 		}
 
 		if ($unmatched && count($unmatched) <= 500) {
-			$found = API::Host()->get([
+			$wanted = array_flip(array_map('mb_strtolower', $unmatched));
+
+			foreach (API::Host()->get([
 				'output' => $host_output,
 				'selectInterfaces' => ['ip', 'dns'],
 				'search' => ['host' => $unmatched, 'name' => $unmatched],
 				'searchByAny' => true,
 				'limit' => 5000
-			]);
-
-			$wanted = array_flip(array_map('mb_strtolower', $unmatched));
-
-			foreach ($found as $host) {
+			]) as $host) {
 				foreach (['host', 'name'] as $field) {
 					$key = mb_strtolower($host[$field]);
 
@@ -445,56 +450,96 @@ abstract class Base extends CController {
 			}
 		}
 
-		// Build the per-token result rows.
-		$rows = [];
+		return ['rows' => $this->judgeRows($rows, $index, $hosts), 'hosts' => $hosts];
+	}
 
-		foreach ($tokens as $token) {
-			$raw = $token['raw'];
+	/** First index entry for a column value, honouring the kind priority. */
+	private function indexHit(array $index, string $value): ?array {
+		$key = mb_strtolower($value);
 
-			if ($token['header']) {
-				$rows[] = ['token' => $raw, 'status' => 'header'];
-				continue;
+		foreach (['host', 'name', 'ip', 'dns'] as $kind) {
+			if (isset($index[$kind][$key])) {
+				return [
+					'matched_on' => $kind,
+					'hostids' => array_values(array_unique($index[$kind][$key]))
+				];
 			}
+		}
 
-			$key = mb_strtolower($raw);
-			$matched_on = null;
-			$hostids = [];
+		return null;
+	}
 
-			foreach (['host', 'name', 'ip', 'dns'] as $field) {
-				if (isset($index[$field][$key])) {
-					$matched_on = $field;
-					$hostids = array_values(array_unique($index[$field][$key]));
-					break;
+	/** Turn the index into one verdict per row. */
+	private function judgeRows(array $rows, array $index, array $hosts): array {
+		$out = [];
+
+		foreach ($rows as $row) {
+			$winner = null;
+			$winning_col = 0;
+			$conflicts = [];
+
+			foreach ($row['fields'] as $i => $field) {
+				$hit = $this->indexHit($index, $field);
+
+				if ($hit === null) {
+					continue;
+				}
+
+				if ($winner === null) {
+					$winner = $hit;
+					$winner['field'] = $field;
+					$winning_col = $i + 1;
+					continue;
+				}
+
+				// A later column resolving to a different host means the CSV
+				// has drifted from reality. Column order still decides, but
+				// say so rather than picking silently.
+				if (count($winner['hostids']) === 1 && count($hit['hostids']) === 1
+						&& $hit['hostids'][0] !== $winner['hostids'][0]) {
+					$conflicts[] = sprintf(_('column %1$d (%2$s) points at %3$s'),
+						$i + 1, $field, $hosts[$hit['hostids'][0]]['host']
+					);
 				}
 			}
 
-			if (!$hostids) {
-				$rows[] = ['token' => $raw, 'status' => 'notfound'];
+			if ($winner === null) {
+				// Only call it a header once we know nothing in it resolved,
+				// so a host legitimately named "device" is not skipped.
+				$out[] = [
+					'token' => $row['raw'],
+					'status' => $this->looksLikeHeader($row['fields'][0]) ? 'header' : 'notfound'
+				];
 				continue;
 			}
 
-			if (count($hostids) > 1) {
+			if (count($winner['hostids']) > 1) {
 				$names = [];
 
-				foreach ($hostids as $hostid) {
+				foreach ($winner['hostids'] as $hostid) {
 					$names[] = $hosts[$hostid]['host'];
 				}
 
-				$rows[] = [
-					'token' => $raw,
+				$out[] = [
+					'token' => $row['raw'],
 					'status' => 'ambiguous',
-					'matched_on' => $matched_on,
+					'column' => $winning_col,
+					'matched_on' => $winner['matched_on'],
 					'candidates' => $names
 				];
 				continue;
 			}
 
-			$host = $hosts[$hostids[0]];
+			$host = $hosts[$winner['hostids'][0]];
 
-			$rows[] = [
-				'token' => $raw,
+			$out[] = [
+				'token' => $row['raw'],
 				'status' => 'ok',
-				'matched_on' => $matched_on,
+				'column' => $winning_col,
+				'columns' => count($row['fields']),
+				'matched_on' => $winner['matched_on'],
+				'matched_value' => $winner['field'],
+				'conflicts' => $conflicts,
 				'hostid' => $host['hostid'],
 				'host' => $host['host'],
 				'name' => $host['name'],
@@ -504,7 +549,7 @@ abstract class Base extends CController {
 			];
 		}
 
-		return ['rows' => $rows, 'hosts' => $hosts];
+		return $out;
 	}
 
 	private function firstIp(array $host): string {

@@ -46,10 +46,10 @@ $e = static function ($value): string {
 
 		<div class="ml-step">
 			<h2 class="ml-step-title"><span class="ml-step-num">1</span><?= $e(_('Paste the hosts')) ?></h2>
-			<p class="ml-hint"><?= $e(_('One per line, or CSV. Host name, visible name, IP or DNS all match. A "name,ip" row is fine, both columns land on the same host.')) ?></p>
+			<p class="ml-hint"><?= $e(_('One host per line. Columns separated by comma, semicolon or tab are alternative identifiers for that same host: column 1 is tried first, then column 2, and so on until one matches. Each column is matched against technical name, visible name, interface IP and interface DNS in that order.')) ?></p>
 
 			<textarea id="ml-input" class="ml-textarea" spellcheck="false" autocapitalize="off" autocorrect="off"
-				placeholder="core-sw-01&#10;core-sw-02&#10;10.20.30.41&#10;esx-host-07.corp.local"></textarea>
+				placeholder="core-sw-01,10.20.30.41&#10;core-sw-02,10.20.30.42&#10;esx-host-07.corp.local&#10;10.20.30.9"></textarea>
 
 			<div class="ml-row">
 				<button type="button" id="ml-verify" class="ml-btn ml-btn-primary"><?= $e(_('Verify')) ?></button>
@@ -67,15 +67,15 @@ $e = static function ($value): string {
 			<div id="ml-summary" class="ml-summary"></div>
 			<div class="ml-row ml-filter-row">
 				<label class="ml-check"><input type="checkbox" id="ml-only-problems"> <?= $e(_('Only show entries that need attention')) ?></label>
-				<button type="button" id="ml-copy-missing" class="ml-btn ml-btn-plain ml-hidden"><?= $e(_('Copy unmatched')) ?></button>
+				<button type="button" id="ml-copy-missing" class="ml-btn ml-btn-plain ml-hidden"><?= $e(_('Copy unmatched rows')) ?></button>
 			</div>
 			<div class="ml-table-wrap">
 				<table class="ml-table" id="ml-results">
 					<thead>
 						<tr>
 							<th class="ml-col-status"></th>
-							<th><?= $e(_('Entry')) ?></th>
-							<th><?= $e(_('Matched')) ?></th>
+							<th><?= $e(_('Row')) ?></th>
+							<th><?= $e(_('Matched on')) ?></th>
 							<th><?= $e(_('Host')) ?></th>
 							<th><?= $e(_('Address')) ?></th>
 							<th><?= $e(_('Note')) ?></th>
