@@ -90,7 +90,7 @@ trait Schedule {
 			));
 		}
 
-		$sched = (string) $this->getInput('sched');
+		$sched = (string) $this->getInput('sched', 'onetime');
 
 		return $sched === 'onetime'
 			? $this->buildOneTime($duration)

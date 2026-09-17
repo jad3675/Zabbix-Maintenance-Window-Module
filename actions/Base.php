@@ -230,6 +230,17 @@ abstract class Base extends CController {
 		$this->json(['error' => $message]);
 	}
 
+	/**
+	 * Validation failure on an AJAX action.
+	 *
+	 * The default CControllerResponseFatal renders a full HTML error page,
+	 * which a fetch() expecting JSON can only report as a wall of markup.
+	 * Answer in the shape the caller asked for instead.
+	 */
+	protected function jsonInvalidInput(): void {
+		$this->json(['error' => _('The request was rejected as malformed. This is a bug in the module, not something you did wrong.')]);
+	}
+
 	/*
 	 * ----------------------------------------------------------------------
 	 * Input parsing

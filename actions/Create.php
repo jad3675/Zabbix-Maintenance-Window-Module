@@ -2,7 +2,6 @@
 
 namespace Modules\MaintLoader\Actions;
 
-use CControllerResponseFatal;
 
 class Create extends Base {
 
@@ -15,7 +14,7 @@ class Create extends Base {
 		]);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->jsonInvalidInput();
 		}
 
 		return $ret;

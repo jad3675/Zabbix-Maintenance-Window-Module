@@ -2,7 +2,6 @@
 
 namespace Modules\MaintLoader\Actions;
 
-use CControllerResponseFatal;
 
 class MaintList extends Base {
 
@@ -12,7 +11,7 @@ class MaintList extends Base {
 		]);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->jsonInvalidInput();
 		}
 
 		return $ret;

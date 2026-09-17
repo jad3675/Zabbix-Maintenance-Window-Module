@@ -105,8 +105,17 @@
 						return JSON.parse(text);
 					}
 					catch (err) {
-						// Almost always a PHP notice or a redirect to the
-						// login page. Surface enough to diagnose it.
+						if (/^\s*<(!doctype|html)/i.test(text)) {
+							// Zabbix rendered a full page: the request was
+							// rejected before the module answered. Session
+							// expired, no permission for the action, or the
+							// controller failed input validation.
+							throw new Error(action + ' returned a Zabbix HTML page instead of JSON. '
+								+ 'The request was rejected before it reached the module. '
+								+ 'Reload the page and sign in again if your session has expired.');
+						}
+
+						// Usually a stray PHP notice ahead of the JSON.
 						throw new Error('Unexpected response from ' + action + ': '
 							+ text.substring(0, 200));
 					}

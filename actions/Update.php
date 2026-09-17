@@ -2,7 +2,6 @@
 
 namespace Modules\MaintLoader\Actions;
 
-use CControllerResponseFatal;
 use CWebUser;
 
 /**
@@ -15,7 +14,16 @@ use CWebUser;
 class Update extends Base {
 
 	protected function checkInput(): bool {
-		$ret = $this->validateInput(self::scheduleRules() + [
+		// buildSchedule() needs sched and duration, but only op=edit calls it.
+		// load and extend post neither, so the required flag scheduleRules()
+		// sets has to come back off. Assign over the keys rather than using
+		// array union: `+` keeps the LEFT operand on a key collision, so
+		// scheduleRules() would win and every load would fail validation.
+		$rules = self::scheduleRules();
+		$rules['sched'] = 'in onetime,daily,weekly,monthly';
+		$rules['duration'] = 'string';
+
+		$rules += [
 			'op' => 'required|in load,extend,edit',
 			'maintenanceid' => 'required|id',
 
@@ -26,15 +34,13 @@ class Update extends Base {
 			'hostids' => 'array_id',
 			'window_name' => 'string',
 			'ticket' => 'string',
-			'note' => 'string',
+			'note' => 'string'
+		];
 
-			// buildSchedule() needs these, but load and extend do not send them.
-			'sched' => 'in onetime,daily,weekly,monthly',
-			'duration' => 'string'
-		]);
+		$ret = $this->validateInput($rules);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->jsonInvalidInput();
 		}
 
 		return $ret;
@@ -242,6 +248,11 @@ class Update extends Base {
 	}
 
 	private function opEdit(array $maintenance): void {
+		if (!$this->hasInput('sched') || !$this->hasInput('duration')) {
+			$this->jsonError(_('The form did not send a schedule. Reload the page and try again.'));
+			return;
+		}
+
 		try {
 			$schedule = $this->buildSchedule();
 		}

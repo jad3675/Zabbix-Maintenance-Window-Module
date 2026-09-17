@@ -2,7 +2,6 @@
 
 namespace Modules\MaintLoader\Actions;
 
-use CControllerResponseFatal;
 use CWebUser;
 
 class End extends Base {
@@ -13,7 +12,7 @@ class End extends Base {
 		]);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->jsonInvalidInput();
 		}
 
 		return $ret;
