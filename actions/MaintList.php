@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 
 class MaintList extends Base {
@@ -34,8 +34,9 @@ class MaintList extends Base {
 				],
 				'selectHosts' => ['hostid', 'host', 'name'],
 				'selectTimeperiods' => 'extend',
-				'search' => ['name' => $this->namePrefix()],
-				'startSearch' => true
+				'search' => ['name' => $this->ownPrefixes()],
+				'startSearch' => true,
+				'searchByAny' => true
 			]);
 		}
 		catch (\Exception $e) {

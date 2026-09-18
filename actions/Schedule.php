@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 /**
  * Builds and describes Zabbix maintenance timeperiods.

@@ -1,6 +1,6 @@
 <?php
 /**
- * Maintenance Loader configuration.
+ * Maintenance Windows configuration.
  *
  * Copy this file to config.php in the same directory and edit it.
  * config.php is NOT stored in the Zabbix database. Lock it down:
@@ -27,7 +27,7 @@ return [
 	 * put a host into maintenance that they cannot already see.
 	 *
 	 * Create the token under Users -> API tokens, owned by a Super admin
-	 * service account (e.g. svc-maintloader) with a role that has API
+	 * service account (e.g. svc-maintwin) with a role that has API
 	 * access restricted to: maintenance.*, host.get, hostinterface.get
 	 */
 
@@ -55,12 +55,24 @@ return [
 	 * ------------------------------------------------------------------
 	 */
 
-	// Every maintenance window created here gets this name prefix. It is
-	// how the module finds its own windows again, and it is the guard that
-	// stops this module deleting maintenance windows it did not create.
-	// If you change it after go-live, existing windows become invisible
-	// to the module. Delete them the normal way first.
-	'name_prefix' => '[ML]',
+	// Every maintenance window created here gets this name prefix. It is how
+	// the module finds its own windows again, and it is the guard that stops
+	// this module deleting maintenance windows it did not create.
+	//
+	// It is also the one internal string your users see: it sits on the front
+	// of every window name in Data collection -> Maintenance. Something that
+	// says "a human scheduled this from the operator page, do not hand-edit
+	// it" is more useful there than an abbreviation of the module name.
+	'name_prefix' => '[MW]',
+
+	// Prefixes this module used to write. Windows carrying one of these are
+	// still listed, editable and endable here; new windows always get
+	// name_prefix above, so editing an old window migrates it.
+	//
+	// Without this, changing name_prefix orphans every window already out
+	// there: invisible on the In flight page and undeletable from it. Leave
+	// old values in place until the last window carrying one has expired.
+	'legacy_prefixes' => ['[ML]'],
 
 	// Refuse a paste larger than this many resolved hosts.
 	'max_hosts' => 2000,

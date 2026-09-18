@@ -1,15 +1,19 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader;
+namespace Modules\MaintWin;
 
 use APP;
+use CMenu;
 use CMenuItem;
 use Zabbix\Core\CModule;
 
 /**
- * Maintenance Loader.
+ * Maintenance Windows.
  *
- * Adds "Maintenance loader" under the Monitoring menu.
+ * Adds a "Maintenance Windows" entry under Monitoring with two children:
+ * the scheduling form and the list of windows already placed. Two real pages
+ * rather than tabs inside one, so each has its own URL, its own menu
+ * highlight, and can be bookmarked or sent to a colleague.
  */
 class Module extends CModule {
 
@@ -28,8 +32,11 @@ class Module extends CModule {
 
 		$monitoring
 			->getSubmenu()
-			->add((new CMenuItem(_('Maintenance loader')))
-				->setAction('maintloader.view')
+			->add((new CMenuItem(_('Maintenance Windows')))
+				->setSubMenu(new CMenu([
+					(new CMenuItem(_('Schedule')))->setAction('maintwin.view'),
+					(new CMenuItem(_('In flight')))->setAction('maintwin.windows')
+				]))
 			);
 	}
 }

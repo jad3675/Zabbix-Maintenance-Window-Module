@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 use CWebUser;
 
@@ -106,7 +106,7 @@ class Update extends Base {
 
 		$maintenance = $found[0];
 
-		if (strpos((string) $maintenance['name'], $this->namePrefix()) !== 0) {
+		if (!$this->isOwnWindow((string) $maintenance['name'])) {
 			throw new \Exception(_('That window was not created here, so this page will not change it.'));
 		}
 
@@ -364,11 +364,18 @@ class Update extends Base {
 	 * ----------------------------------------------------------------------
 	 */
 
-	/** Strip "[ML] " and the trailing " YYYY-MM-DD HH:MM ABCD" back off. */
+	/** Strip the prefix and the trailing " YYYY-MM-DD HH:MM ABCD" back off. */
 	private function stripName(string $name): string {
-		$label = trim(substr($name, strlen($this->namePrefix())));
+		// Whichever prefix matched, not just the current one: a window created
+		// under an older prefix still has to round-trip through the editor.
+		foreach ($this->ownPrefixes() as $prefix) {
+			if (strpos($name, $prefix) === 0) {
+				$name = substr($name, strlen($prefix));
+				break;
+			}
+		}
 
-		return trim(preg_replace('/\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}(\s+[0-9A-F]{4})?$/', '', $label));
+		return trim(preg_replace('/\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}(\s+[0-9A-F]{4})?$/', '', trim($name)));
 	}
 
 	/** Everything after the blank line that separates the header from the note. */

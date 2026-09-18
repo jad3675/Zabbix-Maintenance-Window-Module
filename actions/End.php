@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 use CWebUser;
 
@@ -50,7 +50,7 @@ class End extends Base {
 		// Guard 1: the module only ever deletes its own windows. Without this
 		// check, an elevated token plus a guessable ID lets any user with page
 		// access wipe out a scheduled change window somebody set up by hand.
-		if (strpos((string) $maintenance['name'], $this->namePrefix()) !== 0) {
+		if (!$this->isOwnWindow((string) $maintenance['name'])) {
 			$this->jsonError(_('That maintenance window was not created here, so this page will not remove it.'));
 			return;
 		}

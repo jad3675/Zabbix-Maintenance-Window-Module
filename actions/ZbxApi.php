@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 /**
  * Minimal JSON-RPC client for api_jsonrpc.php, authenticated with a service

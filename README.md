@@ -1,4 +1,4 @@
-# Maintenance Loader
+# Maintenance Windows
 
 A Zabbix frontend module. Paste a list of hosts, verify them, drop them all
 into a maintenance window. Regular Zabbix Users can use it, which is the whole
@@ -16,8 +16,8 @@ cd /usr/share/zabbix/ui/modules
 # 7.0 and older
 # cd /usr/share/zabbix/modules
 
-cp -r /path/to/maintloader .
-cd maintloader
+cp -r /path/to/maintwin .
+cd maintwin
 cp config.php.example config.php
 $EDITOR config.php
 
@@ -26,11 +26,20 @@ chmod 640 config.php
 ```
 
 Containerised frontend: the module directory has to be a volume mount into
-`/usr/share/zabbix/ui/modules/maintloader` inside the frontend container, and
+`/usr/share/zabbix/ui/modules/maintwin` inside the frontend container, and
 `config.php` needs to be readable by the container's web user, not the host's.
 
 Then: **Administration → General → Modules → Scan directory**, enable
-*Maintenance Loader*. A **Maintenance loader** entry appears under Monitoring.
+*Maintenance Windows*. A **Maintenance Windows** entry appears under Monitoring
+with two children:
+
+- **Schedule** — paste, verify, set the window
+- **In flight** — what is currently placed, with Extend, Edit and End
+
+Two real pages rather than tabs, so each has its own URL and menu highlight and
+can be bookmarked or pasted into a ticket. Edit on the In flight page hands off
+to the Schedule page with `?edit=<maintenanceid>`; the form is defined once and
+lives there.
 
 ## The service token
 
@@ -38,7 +47,7 @@ Host lookups run in-process as the logged-in user. The three maintenance calls
 (`create`, `get`, `delete`) go out over HTTP to `api_jsonrpc.php` with a
 service token, because a plain User cannot make them.
 
-1. Create a Super admin service user, e.g. `svc-maintloader`.
+1. Create a Super admin service user, e.g. `svc-maintwin`.
 2. Give it a role whose **API methods** list is set to *Allow list* containing
    only: `maintenance.create`, `maintenance.get`, `maintenance.delete`,
    `usergroup.get`. That last one is only needed if you use
@@ -181,6 +190,21 @@ file under `modules/` or under Zabbix's own `include/` before blaming this
 module. Zabbix 7.4 does not officially certify PHP 8.5, so its own code emits
 some.
 
+## Renaming, and the window prefix
+
+`name_prefix` (default `[MW]`) is the one internal string users see: it sits on
+the front of every window name in Data collection → Maintenance. The module
+also uses it to find its own work, and refuses to edit or delete anything that
+does not carry it.
+
+That makes changing it dangerous on its own, so `legacy_prefixes` exists.
+Windows carrying an old prefix stay listed, editable and endable; new windows
+always get `name_prefix`, so editing an old window quietly migrates it. Leave
+the old value in the list until the last window carrying it has expired.
+
+The CSS classes and DOM ids are still `ml-` prefixed from an earlier name.
+Purely internal, not worth the churn of renaming.
+
 ## Known rough edges
 
 - **The menu item shows for all users** (see above).
@@ -212,7 +236,7 @@ some.
 ## Files
 
 ```
-maintloader/
+maintwin/
 ├── manifest.json               actions, namespace, assets
 ├── Module.php                  menu entry
 ├── config.php.example          copy to config.php
@@ -220,17 +244,17 @@ maintloader/
 │   ├── Base.php                config, permissions, token parsing, host resolution
 │   ├── Schedule.php            timeperiod builder, describer and reverse mapping
 │   ├── ZbxApi.php              service-token JSON-RPC client
-│   ├── View.php                page
+│   ├── View.php                both pages (getAction() decides which)
 │   ├── Verify.php              resolve a pasted list
 │   ├── Create.php              build and submit the window
 │   ├── Update.php              load, extend, edit
 │   ├── MaintList.php           windows in flight
 │   └── End.php                 delete a window
 ├── views/
-│   └── maintloader.view.php
+│   └── maintwin.view.php
 └── assets/
-    ├── js/maintloader.js
-    └── css/maintloader.css
+    ├── js/maintwin.js
+    └── css/maintwin.css
 ```
 
 Assets load on every frontend page, so the JS bails out immediately unless

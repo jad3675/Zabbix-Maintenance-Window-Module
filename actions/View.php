@@ -1,14 +1,21 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 use CControllerResponseData;
 use CControllerResponseFatal;
 
+/**
+ * Serves both pages. The manifest points maintwin.view and maintwin.windows
+ * at this one class; getAction() says which was asked for.
+ */
 class View extends Base {
 
 	protected function checkInput(): bool {
-		$ret = $this->validateInput([]);
+		$ret = $this->validateInput([
+			// Set when arriving from the Edit button on the In flight page.
+			'edit' => 'id'
+		]);
 
 		if (!$ret) {
 			$this->setResponse(new CControllerResponseFatal());
@@ -18,6 +25,8 @@ class View extends Base {
 	}
 
 	protected function doAction(): void {
+		$page = ($this->getAction() === 'maintwin.windows') ? 'windows' : 'schedule';
+
 		$config_error = $this->configError();
 		$api_error = null;
 
@@ -31,6 +40,8 @@ class View extends Base {
 		}
 
 		$data = [
+			'page' => $page,
+			'edit' => $this->hasInput('edit') ? (string) $this->getInput('edit') : '',
 			'config_error' => $config_error,
 			'api_error' => $api_error,
 			'name_prefix' => $this->namePrefix(),
@@ -41,7 +52,10 @@ class View extends Base {
 		];
 
 		$response = new CControllerResponseData($data);
-		$response->setTitle(_('Maintenance loader'));
+		$response->setTitle($page === 'windows'
+			? _('Maintenance windows in flight')
+			: _('Schedule maintenance')
+		);
 
 		$this->setResponse($response);
 	}

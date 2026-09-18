@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace Modules\MaintLoader\Actions;
+namespace Modules\MaintWin\Actions;
 
 use API;
 use CController;
@@ -102,9 +102,44 @@ abstract class Base extends CController {
 	}
 
 	protected function namePrefix(): string {
-		$prefix = trim((string) $this->config('name_prefix', '[ML]'));
+		$prefix = trim((string) $this->config('name_prefix', '[MW]'));
 
-		return $prefix === '' ? '[ML]' : $prefix;
+		return $prefix === '' ? '[MW]' : $prefix;
+	}
+
+	/**
+	 * Every prefix that marks a window as ours: the current one, plus any
+	 * listed in legacy_prefixes.
+	 *
+	 * The module finds its own work by name prefix, so changing name_prefix
+	 * would otherwise orphan every window already out there: invisible on the
+	 * In flight page and undeletable, since the guard refuses anything that
+	 * does not match. Listing the old prefix keeps them reachable. New windows
+	 * always get the current prefix, so editing an old one migrates it.
+	 */
+	protected function ownPrefixes(): array {
+		$out = [$this->namePrefix()];
+
+		foreach ((array) $this->config('legacy_prefixes', []) as $prefix) {
+			$prefix = trim((string) $prefix);
+
+			if ($prefix !== '' && !in_array($prefix, $out, true)) {
+				$out[] = $prefix;
+			}
+		}
+
+		return $out;
+	}
+
+	/** Did this module create the window? The guard on every write path. */
+	protected function isOwnWindow(string $name): bool {
+		foreach ($this->ownPrefixes() as $prefix) {
+			if (strpos($name, $prefix) === 0) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/*
@@ -188,7 +223,7 @@ abstract class Base extends CController {
 	 */
 	protected function buildDescription(array $parts): string {
 		$lines = [
-			'Created via Maintenance Loader.',
+			'Created via Maintenance Windows.',
 			'Requested by: '.$this->userName(),
 			'Created at:   '.date('Y-m-d H:i:s T'),
 			'Hosts:        '.(int) ($parts['hosts'] ?? 0)

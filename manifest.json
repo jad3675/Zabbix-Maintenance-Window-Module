@@ -1,40 +1,45 @@
 {
 	"manifest_version": 2.0,
-	"id": "maintloader",
-	"name": "Maintenance Loader",
-	"namespace": "MaintLoader",
-	"version": "1.2.1",
+	"id": "maintwin",
+	"name": "Maintenance Windows",
+	"namespace": "MaintWin",
+	"version": "2.0.0",
 	"author": "John Danhires",
 	"description": "Paste or upload a list of hosts, verify them, and drop them all into a Zabbix maintenance window. Works for non-admin users via a scoped service token.",
 	"actions": {
-		"maintloader.view": {
+		"maintwin.view": {
 			"class": "View",
-			"view": "maintloader.view",
+			"view": "maintwin.view",
 			"layout": "layout.htmlpage"
 		},
-		"maintloader.verify": {
+		"maintwin.windows": {
+			"class": "View",
+			"view": "maintwin.view",
+			"layout": "layout.htmlpage"
+		},
+		"maintwin.verify": {
 			"class": "Verify",
 			"layout": "layout.json"
 		},
-		"maintloader.create": {
+		"maintwin.create": {
 			"class": "Create",
 			"layout": "layout.json"
 		},
-		"maintloader.update": {
+		"maintwin.update": {
 			"class": "Update",
 			"layout": "layout.json"
 		},
-		"maintloader.list": {
+		"maintwin.list": {
 			"class": "MaintList",
 			"layout": "layout.json"
 		},
-		"maintloader.end": {
+		"maintwin.end": {
 			"class": "End",
 			"layout": "layout.json"
 		}
 	},
 	"assets": {
-		"css": ["maintloader.css"],
-		"js": ["maintloader.js"]
+		"css": ["maintwin.css"],
+		"js": ["maintwin.js"]
 	}
 }
