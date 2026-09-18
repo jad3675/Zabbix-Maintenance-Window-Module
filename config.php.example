@@ -63,16 +63,13 @@ return [
 	// of every window name in Data collection -> Maintenance. Something that
 	// says "a human scheduled this from the operator page, do not hand-edit
 	// it" is more useful there than an abbreviation of the module name.
-	'name_prefix' => '[MW]',
-
-	// Prefixes this module used to write. Windows carrying one of these are
-	// still listed, editable and endable here; new windows always get
-	// name_prefix above, so editing an old window migrates it.
 	//
-	// Without this, changing name_prefix orphans every window already out
-	// there: invisible on the In flight page and undeletable from it. Leave
-	// old values in place until the last window carrying one has expired.
-	'legacy_prefixes' => ['[ML]'],
+	// CHANGING THIS ORPHANS EXISTING WINDOWS. The module finds its own work by
+	// this prefix and refuses to touch anything that does not carry it, so
+	// windows written under the old value go invisible on the In flight page
+	// and have to be cleared out by hand in Data collection -> Maintenance.
+	// Change it only when nothing is in flight.
+	'name_prefix' => '[MW]',
 
 	// Refuse a paste larger than this many resolved hosts.
 	'max_hosts' => 2000,

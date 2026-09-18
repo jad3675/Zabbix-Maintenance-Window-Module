@@ -197,10 +197,16 @@ the front of every window name in Data collection → Maintenance. The module
 also uses it to find its own work, and refuses to edit or delete anything that
 does not carry it.
 
-That makes changing it dangerous on its own, so `legacy_prefixes` exists.
-Windows carrying an old prefix stay listed, editable and endable; new windows
-always get `name_prefix`, so editing an old window quietly migrates it. Leave
-the old value in the list until the last window carrying it has expired.
+So changing it orphans anything already out there: windows written under the
+old value go invisible on the In flight page and cannot be ended from it. They
+still exist and still suppress alerts, they just have to be cleared out by hand
+in Data collection → Maintenance. Change the prefix only when nothing is in
+flight.
+
+Note that `config.php` is yours and an upgrade never overwrites it. If the
+default in `config.php.example` changes between versions, your live value stays
+whatever you set it to. The In flight page prints the prefix currently in
+force, which is the quickest way to check which one you are actually running.
 
 The CSS classes and DOM ids are still `ml-` prefixed from an earlier name.
 Purely internal, not worth the churn of renaming.

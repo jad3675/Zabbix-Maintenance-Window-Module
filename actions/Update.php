@@ -366,13 +366,10 @@ class Update extends Base {
 
 	/** Strip the prefix and the trailing " YYYY-MM-DD HH:MM ABCD" back off. */
 	private function stripName(string $name): string {
-		// Whichever prefix matched, not just the current one: a window created
-		// under an older prefix still has to round-trip through the editor.
-		foreach ($this->ownPrefixes() as $prefix) {
-			if (strpos($name, $prefix) === 0) {
-				$name = substr($name, strlen($prefix));
-				break;
-			}
+		$prefix = $this->namePrefix();
+
+		if (strpos($name, $prefix) === 0) {
+			$name = substr($name, strlen($prefix));
 		}
 
 		return trim(preg_replace('/\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}(\s+[0-9A-F]{4})?$/', '', trim($name)));

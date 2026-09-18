@@ -34,9 +34,8 @@ class MaintList extends Base {
 				],
 				'selectHosts' => ['hostid', 'host', 'name'],
 				'selectTimeperiods' => 'extend',
-				'search' => ['name' => $this->ownPrefixes()],
-				'startSearch' => true,
-				'searchByAny' => true
+				'search' => ['name' => $this->namePrefix()],
+				'startSearch' => true
 			]);
 		}
 		catch (\Exception $e) {
