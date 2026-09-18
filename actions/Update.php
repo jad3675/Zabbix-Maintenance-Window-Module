@@ -200,7 +200,7 @@ class Update extends Base {
 		}
 
 		$period = (int) $timeperiods[0]['period'] + $delta;
-		$max_duration = (int) $this->config('max_duration', 604800);
+		$max_duration = (int) $this->config('max_duration', 31622400);
 
 		if ($period > $max_duration) {
 			$this->jsonError(sprintf(

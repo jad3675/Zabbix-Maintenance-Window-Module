@@ -81,7 +81,7 @@ trait Schedule {
 			throw new \Exception(_('Zabbix will not accept a maintenance period shorter than 5 minutes.'));
 		}
 
-		$max_duration = (int) $this->config('max_duration', 604800);
+		$max_duration = (int) $this->config('max_duration', 31622400);
 
 		if ($duration > $max_duration) {
 			throw new \Exception(sprintf(

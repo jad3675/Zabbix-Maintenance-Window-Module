@@ -188,7 +188,13 @@ $e = static function ($value): string {
 						<option value="12h">12 hours</option>
 						<option value="1d">24 hours</option>
 						<option value="2d">2 days</option>
+						<option value="3d">3 days</option>
 						<option value="1w">1 week</option>
+						<option value="2w">2 weeks</option>
+						<option value="30d">30 days</option>
+						<option value="90d">90 days</option>
+						<option value="180d">180 days</option>
+						<option value="365d">365 days</option>
 						<option value="custom"><?= $e(_('Custom...')) ?></option>
 					</select>
 					<input type="text" id="ml-duration-custom" class="ml-hidden" placeholder="1h30m" maxlength="20">

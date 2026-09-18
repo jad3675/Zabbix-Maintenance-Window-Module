@@ -46,7 +46,7 @@ class View extends Base {
 			'api_error' => $api_error,
 			'name_prefix' => $this->namePrefix(),
 			'max_hosts' => (int) $this->config('max_hosts', 2000),
-			'max_duration' => (int) $this->config('max_duration', 604800),
+			'max_duration' => (int) $this->config('max_duration', 31622400),
 			'default_collect_data' => (int) $this->config('default_collect_data', 1),
 			'user' => $this->userName()
 		];

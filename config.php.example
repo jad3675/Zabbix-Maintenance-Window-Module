@@ -74,8 +74,21 @@ return [
 	// Refuse a paste larger than this many resolved hosts.
 	'max_hosts' => 2000,
 
-	// Longest window a user may schedule, in seconds. 604800 = 7 days.
-	'max_duration' => 604800,
+	// Longest window a user may schedule, in seconds.
+	//   3600     1 hour        86400      1 day
+	//   604800   7 days        2592000    30 days
+	//   7948800  92 days       31622400   366 days
+	//
+	// This is a guardrail against a typo, not a policy. A year-long window is
+	// a legitimate thing to want (a decommissioned-but-not-yet-removed host,
+	// a lab that is never going to be in service) but it is also what a
+	// fat-fingered "1d" typed as "1y" looks like, so the number here is what
+	// stands between the two.
+	//
+	// Note what a long window means for the "No data" collection mode: nothing
+	// is polled for the duration, so the graphs get a hole exactly that long.
+	// Prefer "Keep collecting" for anything measured in weeks.
+	'max_duration' => 31622400,
 
 	// Default for the "Collect data" toggle. 1 = with data collection
 	// (metrics keep flowing, alerts are suppressed), 0 = without.
