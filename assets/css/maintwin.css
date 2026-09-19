@@ -623,3 +623,76 @@
 .ml-banner-foot {
 	margin-top: 9px;
 }
+
+/* ------------------------------------------- devices in maintenance --- */
+
+.ml-search {
+	background: rgba(128, 128, 128, .06);
+	border: 1px solid rgba(128, 128, 128, .35);
+	border-radius: 3px;
+	color: inherit;
+	font: inherit;
+	min-width: 240px;
+	padding: 5px 9px;
+}
+
+.ml-table-tall {
+	max-height: 70vh;
+}
+
+.ml-table-sortable th[data-sort] {
+	cursor: pointer;
+	padding-right: 18px;
+	position: relative;
+	user-select: none;
+}
+
+.ml-table-sortable th[data-sort]:hover {
+	background: rgba(128, 128, 128, .2);
+}
+
+/* Arrow drawn with borders so it inherits the theme's text colour. */
+.ml-sort-asc::after,
+.ml-sort-desc::after {
+	border-left: 4px solid transparent;
+	border-right: 4px solid transparent;
+	content: "";
+	position: absolute;
+	right: 6px;
+	top: 50%;
+}
+
+.ml-sort-asc::after {
+	border-bottom: 5px solid currentColor;
+	margin-top: -3px;
+}
+
+.ml-sort-desc::after {
+	border-top: 5px solid currentColor;
+	margin-top: -2px;
+}
+
+.ml-tagwrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 3px;
+	max-width: 340px;
+}
+
+.ml-tag {
+	background: rgba(56, 132, 255, .16);
+	border: 1px solid rgba(56, 132, 255, .3);
+	border-radius: 3px;
+	font-size: 10px;
+	padding: 1px 6px;
+	white-space: nowrap;
+}
+
+.ml-pill-nodata {
+	background: rgba(215, 150, 20, .28);
+}
+
+.ml-empty {
+	padding: 22px 10px !important;
+	text-align: center;
+}

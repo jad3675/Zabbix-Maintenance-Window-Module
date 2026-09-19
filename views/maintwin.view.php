@@ -26,7 +26,10 @@ $e = static function ($value): string {
 
 ?>
 <div class="ml-page">
-	<h1 class="ml-title"><?= $e($data['page'] === 'windows' ? _('Windows in flight') : _('Schedule maintenance')) ?></h1>
+	<h1 class="ml-title"><?= $e([
+		'windows' => _('Windows in flight'),
+		'devices' => _('Devices in maintenance')
+	][$data['page']] ?? _('Schedule maintenance')) ?></h1>
 
 <?php if ($data['config_error'] !== null): ?>
 	<div class="ml-banner ml-banner-bad">
@@ -42,7 +45,7 @@ $e = static function ($value): string {
 
 
 	<!-- ============================ SCHEDULE =========================== -->
-<?php if ($data['page'] !== 'windows'): ?>
+<?php if ($data['page'] === 'schedule'): ?>
 	<section id="ml-panel-new" class="ml-panel">
 
 		<div class="ml-step">
@@ -223,7 +226,7 @@ $e = static function ($value): string {
 			<div id="ml-create-result"></div>
 		</div>
 	</section>
-<?php else: ?>
+<?php elseif ($data['page'] === 'windows'): ?>
 
 	<!-- ============================ IN FLIGHT ========================== -->
 	<section id="ml-panel-active" class="ml-panel">
@@ -233,6 +236,40 @@ $e = static function ($value): string {
 			<span class="ml-muted"><?= $e(sprintf(_('Only windows created here (name starts with %s) are listed and only those can be ended here.'), $data['name_prefix'])) ?></span>
 		</div>
 		<div id="ml-active-list" class="ml-active-list"></div>
+	</section>
+<?php else: ?>
+
+	<!-- ========================= DEVICES IN MAINT ====================== -->
+	<section id="ml-panel-devices" class="ml-panel">
+		<p class="ml-hint"><?= $e(_('Every host Zabbix currently has suppressed, whoever put it there. Built from host status rather than from this module\'s own records, so windows scheduled by hand in Data collection, and hosts swept in by a host-group target, show up too. Limited to hosts you have permission to see.')) ?></p>
+
+		<div class="ml-row ml-filter-row">
+			<button type="button" id="ml-dev-refresh" class="ml-btn ml-btn-plain"><?= $e(_('Refresh')) ?></button>
+			<input type="search" id="ml-dev-filter" class="ml-search" placeholder="<?= $e(_('Filter by host, IP or tag')) ?>">
+			<label class="ml-check"><input type="checkbox" id="ml-dev-external"> <?= $e(_('Only windows not created here')) ?></label>
+			<button type="button" id="ml-dev-csv" class="ml-btn"><?= $e(_('Export CSV')) ?></button>
+			<span id="ml-dev-count" class="ml-muted"></span>
+		</div>
+
+		<div id="ml-dev-message"></div>
+
+		<div class="ml-table-wrap ml-table-tall">
+			<table class="ml-table ml-table-sortable" id="ml-dev-table">
+				<thead>
+					<tr>
+						<th data-sort="name"><?= $e(_('Host')) ?></th>
+						<th data-sort="ip"><?= $e(_('IP')) ?></th>
+						<th data-sort="tags"><?= $e(_('Tags')) ?></th>
+						<th data-sort="collect"><?= $e(_('Collection')) ?></th>
+						<th data-sort="window"><?= $e(_('Window')) ?></th>
+						<th data-sort="since"><?= $e(_('Since')) ?></th>
+						<th data-sort="until"><?= $e(_('Until')) ?></th>
+						<th data-sort="source"><?= $e(_('Source')) ?></th>
+					</tr>
+				</thead>
+				<tbody></tbody>
+			</table>
+		</div>
 	</section>
 <?php endif; ?>
 </div>

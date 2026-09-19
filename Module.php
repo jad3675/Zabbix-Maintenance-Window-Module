@@ -35,7 +35,8 @@ class Module extends CModule {
 			->add((new CMenuItem(_('Maintenance Windows')))
 				->setSubMenu(new CMenu([
 					(new CMenuItem(_('Schedule')))->setAction('maintwin.view'),
-					(new CMenuItem(_('In flight')))->setAction('maintwin.windows')
+					(new CMenuItem(_('In flight')))->setAction('maintwin.windows'),
+					(new CMenuItem(_('Devices in Maintenance')))->setAction('maintwin.devices')
 				]))
 			);
 	}

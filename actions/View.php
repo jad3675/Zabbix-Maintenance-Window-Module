@@ -25,7 +25,10 @@ class View extends Base {
 	}
 
 	protected function doAction(): void {
-		$page = ($this->getAction() === 'maintwin.windows') ? 'windows' : 'schedule';
+		$page = [
+			'maintwin.windows' => 'windows',
+			'maintwin.devices' => 'devices'
+		][$this->getAction()] ?? 'schedule';
 
 		$config_error = $this->configError();
 		$api_error = null;
@@ -52,10 +55,10 @@ class View extends Base {
 		];
 
 		$response = new CControllerResponseData($data);
-		$response->setTitle($page === 'windows'
-			? _('Maintenance windows in flight')
-			: _('Schedule maintenance')
-		);
+		$response->setTitle([
+			'windows' => _('Maintenance windows in flight'),
+			'devices' => _('Devices in maintenance')
+		][$page] ?? _('Schedule maintenance'));
 
 		$this->setResponse($response);
 	}

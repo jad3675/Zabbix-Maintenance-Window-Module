@@ -1154,10 +1154,268 @@
 
 		} /* end wireWindows */
 
+
+		/* ================================================================ */
+		/* DEVICES IN MAINTENANCE PAGE                                      */
+		/* ================================================================ */
+
+		function wireDevices() {
+
+		var devices = [];
+		var sort_key = 'name';
+		var sort_dir = 1;
+
+		var COLUMNS = [
+			{key: 'name',   label: 'Host'},
+			{key: 'host',   label: 'Technical name'},
+			{key: 'ip',     label: 'IP'},
+			{key: 'tags',   label: 'Tags'},
+			{key: 'collect',label: 'Collection'},
+			{key: 'window', label: 'Window'},
+			{key: 'since',  label: 'In maintenance since'},
+			{key: 'until',  label: 'Until'},
+			{key: 'source', label: 'Source'}
+		];
+
+		function load() {
+			$('ml-dev-refresh').disabled = true;
+
+			return post('maintwin.inmaint', {})
+				.then(function (data) {
+					if (data.error) {
+						banner($('ml-dev-message'), 'bad', data.error);
+						return;
+					}
+
+					clear($('ml-dev-message'));
+					devices = data.rows;
+					render();
+				})
+				.catch(function (err) {
+					banner($('ml-dev-message'), 'bad', err.message);
+				})
+				.then(function () {
+					$('ml-dev-refresh').disabled = false;
+				});
+		}
+
+		/** Rows after the filter box and the external-only checkbox. */
+		function visible() {
+			var needle = $('ml-dev-filter').value.trim().toLowerCase();
+			var external_only = $('ml-dev-external').checked;
+
+			return devices.filter(function (row) {
+				if (external_only && row.source !== 'external') {
+					return false;
+				}
+
+				if (needle === '') {
+					return true;
+				}
+
+				return [row.name, row.host, row.ip, row.window]
+					.concat(row.tags)
+					.join(' ')
+					.toLowerCase()
+					.indexOf(needle) !== -1;
+			});
+		}
+
+		function sorted(rows) {
+			return rows.slice().sort(function (a, b) {
+				var x = a[sort_key];
+				var y = b[sort_key];
+
+				if (sort_key === 'tags') {
+					x = x.join(', ');
+					y = y.join(', ');
+				}
+
+				if (typeof x === 'number' && typeof y === 'number') {
+					return (x - y) * sort_dir;
+				}
+
+				if (typeof x === 'boolean') {
+					return ((x ? 1 : 0) - (y ? 1 : 0)) * sort_dir;
+				}
+
+				return String(x).localeCompare(String(y), undefined, {numeric: true, sensitivity: 'base'})
+					* sort_dir;
+			});
+		}
+
+		function render() {
+			var rows = sorted(visible());
+			var tbody = $('ml-dev-table').tBodies[0];
+
+			clear(tbody);
+
+			$('ml-dev-count').textContent = rows.length === devices.length
+				? devices.length + (devices.length === 1 ? ' device' : ' devices')
+				: rows.length + ' of ' + devices.length + ' devices';
+
+			$('ml-dev-csv').disabled = rows.length === 0;
+
+			if (!rows.length) {
+				tbody.appendChild(el('tr', {}, [
+					el('td', {colspan: '8', class: 'ml-muted ml-empty',
+						text: devices.length
+							? 'Nothing matches that filter.'
+							: 'No hosts are in maintenance right now.'})
+				]));
+				return;
+			}
+
+			rows.forEach(function (row) {
+				var tags = el('div', {class: 'ml-tagwrap'});
+
+				row.tags.forEach(function (tag) {
+					tags.appendChild(el('span', {class: 'ml-tag', text: tag}));
+				});
+
+				var host_cell = el('td', {}, [el('div', {text: row.name})]);
+
+				// Only show the technical name when it differs, otherwise the
+				// column is just the same string twice.
+				if (row.host !== row.name) {
+					host_cell.appendChild(el('div', {class: 'ml-mono ml-muted', text: row.host}));
+				}
+
+				if (!row.enabled) {
+					host_cell.appendChild(el('div', {class: 'ml-muted', text: 'host disabled'}));
+				}
+
+				tbody.appendChild(el('tr', {}, [
+					host_cell,
+					el('td', {class: 'ml-mono ml-muted', text: row.ip}),
+					el('td', {}, [tags]),
+					el('td', {}, [
+						el('span', {
+							class: 'ml-pill ' + (row.collect ? 'ml-pill-good' : 'ml-pill-nodata'),
+							text: row.collect ? 'collecting' : 'no data'
+						})
+					]),
+					el('td', {class: 'ml-mono', text: row.window}),
+					el('td', {class: 'ml-mono ml-muted', text: row.since_text}),
+					el('td', {class: 'ml-mono ml-muted', text: row.until_text}),
+					el('td', {}, [
+						el('span', {
+							class: 'ml-pill ' + (row.source === 'module' ? 'ml-pill-scheduled' : 'ml-pill-grey'),
+							text: row.source === 'module' ? 'this tool' : 'external'
+						})
+					])
+				]));
+			});
+		}
+
+		all('th[data-sort]', $('ml-dev-table')).forEach(function (th) {
+			th.addEventListener('click', function () {
+				var key = th.getAttribute('data-sort');
+
+				sort_dir = (key === sort_key) ? -sort_dir : 1;
+				sort_key = key;
+
+				all('th[data-sort]', $('ml-dev-table')).forEach(function (other) {
+					other.classList.remove('ml-sort-asc', 'ml-sort-desc');
+				});
+
+				th.classList.add(sort_dir === 1 ? 'ml-sort-asc' : 'ml-sort-desc');
+				render();
+			});
+		});
+
+		$('ml-dev-refresh').addEventListener('click', load);
+		$('ml-dev-filter').addEventListener('input', render);
+		$('ml-dev-external').addEventListener('change', render);
+
+		/* ---------------------------------------------------------------- */
+		/* CSV                                                              */
+		/* ---------------------------------------------------------------- */
+
+		/**
+		 * RFC 4180 quoting, plus a guard against spreadsheet formula
+		 * injection: a field starting with = + - @ is executed as a formula by
+		 * Excel and Sheets. Tag values are admin-supplied and these files get
+		 * mailed around, so prefix those with an apostrophe.
+		 */
+		function csvField(value) {
+			var text = (value === null || value === undefined) ? '' : String(value);
+
+			if (/^[=+\-@\t\r]/.test(text)) {
+				text = "'" + text;
+			}
+
+			return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+		}
+
+		function buildCsv(rows) {
+			var lines = [COLUMNS.map(function (c) {
+				return csvField(c.label);
+			}).join(',')];
+
+			rows.forEach(function (row) {
+				lines.push(COLUMNS.map(function (c) {
+					if (c.key === 'tags') {
+						return csvField(row.tags.join(', '));
+					}
+
+					if (c.key === 'collect') {
+						return csvField(row.collect ? 'collecting' : 'no data');
+					}
+
+					if (c.key === 'since') {
+						return csvField(row.since_text);
+					}
+
+					if (c.key === 'until') {
+						return csvField(row.until_text);
+					}
+
+					if (c.key === 'source') {
+						return csvField(row.source === 'module' ? 'this tool' : 'external');
+					}
+
+					return csvField(row[c.key]);
+				}).join(','));
+			});
+
+			return lines.join('\r\n');
+		}
+
+		function stamp() {
+			var d = new Date();
+
+			return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+				+ '-' + pad(d.getHours()) + pad(d.getMinutes());
+		}
+
+		$('ml-dev-csv').addEventListener('click', function () {
+			// Exports what is on screen, filter and sort included. Exporting
+			// the unfiltered set would be a surprise after narrowing the list.
+			var csv = buildCsv(sorted(visible()));
+
+			// BOM so Excel reads it as UTF-8 and does not mangle tag values.
+			var blob = new Blob(['\ufeff' + csv], {type: 'text/csv;charset=utf-8;'});
+			var url = URL.createObjectURL(blob);
+			var link = el('a', {href: url, download: 'devices-in-maintenance-' + stamp() + '.csv'});
+
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		});
+
+		load();
+
+		} /* end wireDevices */
+
 		/* ---------------------------------------------------------------- */
 
 		if (CFG.page === 'windows') {
 			wireWindows();
+		}
+		else if (CFG.page === 'devices') {
+			wireDevices();
 		}
 		else {
 			wireSchedule();

@@ -34,7 +34,9 @@ Then: **Administration → General → Modules → Scan directory**, enable
 with two children:
 
 - **Schedule** — paste, verify, set the window
-- **In flight** — what is currently placed, with Extend, Edit and End
+- **In flight** — what this module has placed, with Extend, Edit and End
+- **Devices in Maintenance** — every host Zabbix currently has suppressed,
+  whoever put it there, exportable as CSV
 
 Two real pages rather than tabs, so each has its own URL and menu highlight and
 can be bookmarked or pasted into a ticket. Edit on the In flight page hands off
@@ -190,6 +192,39 @@ file under `modules/` or under Zabbix's own `include/` before blaming this
 module. Zabbix 7.4 does not officially certify PHP 8.5, so its own code emits
 some.
 
+## Devices in Maintenance
+
+The other two pages are about this module's own records. This one is not, and
+that is the point.
+
+It is built from `host.get` filtered on `maintenance_status`, which Zabbix
+maintains itself, rather than from `maintenance.get`. So it catches everything
+the module has no record of: a window scheduled by hand in Data collection, a
+window with a host-group target that swept in hosts nobody listed individually,
+a recurring window somebody set up two years ago and forgot about. The Source
+column marks each row as *this tool* or *external*, and there is a checkbox to
+show only the latter, which is the "what did the admins do" view.
+
+Because it queries hosts as the logged-in user, it is permission-scoped for
+free: nobody sees a suppressed host they could not already see elsewhere.
+
+Columns: host (technical name shown underneath when it differs), IP, tags,
+collection mode, window name, when the host entered maintenance, when the
+window ends, source. Click a header to sort. The filter box matches host name,
+IP, window name and tags at once.
+
+Window names and end times need `maintenance.get`, which is Admin-only, so they
+come through the service token. If the token is broken the page still renders
+with those two columns blank rather than failing outright, since everything
+else on it is useful without them.
+
+**CSV export** writes what is on screen, filter and sort included. Exporting
+the unfiltered set after someone has narrowed the list would be a nasty
+surprise. The file gets a UTF-8 BOM so Excel does not mangle tag values, RFC
+4180 quoting, and an apostrophe in front of any field starting with `=`, `+`,
+`-` or `@`, because those are executed as formulas by Excel and Sheets and
+these files get mailed around.
+
 ## Renaming, and the window prefix
 
 `name_prefix` (default `[MW]`) is the one internal string users see: it sits on
@@ -254,6 +289,7 @@ maintwin/
 │   ├── Verify.php              resolve a pasted list
 │   ├── Create.php              build and submit the window
 │   ├── Update.php              load, extend, edit
+│   ├── InMaint.php             every suppressed host, from host status
 │   ├── MaintList.php           windows in flight
 │   └── End.php                 delete a window
 ├── views/

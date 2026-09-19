@@ -568,7 +568,7 @@ abstract class Base extends CController {
 		return $out;
 	}
 
-	private function firstIp(array $host): string {
+	protected function firstIp(array $host): string {
 		foreach ((array) ($host['interfaces'] ?? []) as $interface) {
 			if (($interface['ip'] ?? '') !== '') {
 				return (string) $interface['ip'];

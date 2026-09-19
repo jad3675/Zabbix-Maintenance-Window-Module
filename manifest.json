@@ -3,7 +3,7 @@
 	"id": "maintwin",
 	"name": "Maintenance Windows",
 	"namespace": "MaintWin",
-	"version": "2.1.0",
+	"version": "2.2.0",
 	"author": "John Danhires",
 	"description": "Paste or upload a list of hosts, verify them, and drop them all into a Zabbix maintenance window. Works for non-admin users via a scoped service token.",
 	"actions": {
@@ -16,6 +16,15 @@
 			"class": "View",
 			"view": "maintwin.view",
 			"layout": "layout.htmlpage"
+		},
+		"maintwin.devices": {
+			"class": "View",
+			"view": "maintwin.view",
+			"layout": "layout.htmlpage"
+		},
+		"maintwin.inmaint": {
+			"class": "InMaint",
+			"layout": "layout.json"
 		},
 		"maintwin.verify": {
 			"class": "Verify",
