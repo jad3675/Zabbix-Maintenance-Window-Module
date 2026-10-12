@@ -7,7 +7,10 @@ class Create extends Base {
 
 	protected function checkInput(): bool {
 		$ret = $this->validateInput(self::scheduleRules() + [
-			'hostids' => 'required|array_id',
+			// Not required any more: a group target carries no hostids.
+			'hostids' => 'array_id',
+			'groupids' => 'array_id',
+			'target' => 'in hosts,group',
 			'window_name' => 'string',
 			'ticket' => 'string',
 			'note' => 'string'
@@ -28,24 +31,16 @@ class Create extends Base {
 			return;
 		}
 
-		// Never trust the hostids the browser hands back. Re-resolve them as
-		// the logged-in user; anything they cannot read is dropped on the floor.
-		$submitted = (array) $this->getInput('hostids');
-		$hostids = $this->visibleHostids($submitted);
+		$targets = $this->resolveTargets();
 
-		if (!$hostids) {
-			$this->jsonError(_('None of those hosts resolved. Verify the list again.'));
+		if (isset($targets['error'])) {
+			$this->jsonError($targets['error']);
 			return;
 		}
 
-		$dropped = count(array_unique($submitted)) - count($hostids);
-
-		$max = (int) $this->config('max_hosts', 2000);
-
-		if (count($hostids) > $max) {
-			$this->jsonError(sprintf(_('%d hosts exceeds the configured limit of %d.'), count($hostids), $max));
-			return;
-		}
+		$hostids = $targets['hostids'];
+		$groupids = $targets['groupids'];
+		$dropped = $targets['dropped'];
 
 		try {
 			$schedule = $this->buildSchedule();
@@ -81,7 +76,8 @@ class Create extends Base {
 			'active_since' => $schedule['active_since'],
 			'active_till' => $schedule['active_till'],
 			'description' => $this->buildDescription([
-				'hosts' => count($hostids),
+				'hosts' => $groupids ? $this->memberCount($groupids) : count($hostids),
+				'groups' => $groupids ? $this->groupLabel($groupids) : '',
 				'schedule' => $this->describeTimeperiod($schedule['timeperiod']),
 				'ticket' => trim((string) $this->getInput('ticket', '')),
 				'note' => trim((string) $this->getInput('note', ''))
@@ -90,7 +86,7 @@ class Create extends Base {
 			'timeperiods' => [$schedule['timeperiod']]
 		];
 
-		$params += $this->api()->hostsParam($hostids);
+		$params += $this->api()->targetsParam($hostids, $groupids);
 
 		try {
 			$result = $this->api()->call('maintenance.create', $params);
@@ -106,11 +102,11 @@ class Create extends Base {
 			'name' => $name,
 			'hosts' => count($hostids),
 			'dropped' => max(0, $dropped),
-			'message' => sprintf(
-				_('%1$d hosts placed. %2$s'),
-				count($hostids),
-				$this->describeTimeperiod($schedule['timeperiod'])
-			)
+			'message' => $groupids
+				? sprintf(_('Placed on %1$s, which stays current as the group changes. %2$s'),
+					$this->groupLabel($groupids), $this->describeTimeperiod($schedule['timeperiod']))
+				: sprintf(_('%1$d hosts placed. %2$s'),
+					count($hostids), $this->describeTimeperiod($schedule['timeperiod']))
 		]);
 	}
 }

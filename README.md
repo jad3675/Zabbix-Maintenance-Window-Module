@@ -62,7 +62,55 @@ for this is pointless and gives you a TLS problem you do not need.
 
 ## What it actually does
 
-**Matching.** One line is one host. Newlines separate rows; commas, semicolons
+**Two ways to find hosts.** Step 1 has a mode toggle.
+
+*Paste a list* is the original: identifiers from a ticket or a CSV, resolved
+against Zabbix. *Select by group, host or tag* uses Zabbix's own pickers, the
+same multiselects and popups as Monitoring → Hosts, plus a tag filter with the
+full operator set. The two are complementary, not alternatives: a change
+ticket hands you a list, a "all the switches at site X" request hands you a
+group and a tag.
+
+Both produce the same resolved-host list, so steps 2 and 3, create and edit are
+identical from that point on and have no idea which path built the list. The
+controllers share one row shape (`describeHost()` in Base) and the test suite
+asserts they stay in step.
+
+**Group selections stay current.** Select a host group and nothing else, and
+the window targets the group itself rather than today's members. Zabbix
+resolves group membership on its own every minute, so a host added to the
+group after the window was created is covered by the next occurrence, and a
+host removed drops out. That matters most for recurring windows: a snapshot of
+"Maintwindow1" taken on day one would miss the five servers added on day six
+and keep suppressing the ones taken out, indefinitely.
+
+Step 2 shows the choice with the live target selected by default, and *Snapshot
+today's members* one click away for the rare case where a fixed list is what
+you want. The In flight card marks these as **live group** and shows how many
+hosts are in the group right now, since that is what actually gets suppressed
+when the window next opens. An empty group is a valid target: the window simply
+covers nobody until the group is filled.
+
+Only groups alone can be live. Narrow a selection with hosts or tags and it
+becomes an intersection, which a maintenance object cannot express (its hosts
+and groups are a union), so it is fixed as a snapshot and step 2 says so. Live
+targeting by **host tag** is not possible natively at all: a maintenance
+window's own `tags` field filters *problems*, not hosts. Tag-driven windows that
+stay current would need a periodic re-sync job, which is not built.
+
+Editing a live window loads it back into the pickers and saves it as a live
+window. Editing follows the same rule for groups as for hosts: anything in the
+window you cannot see is left exactly as it was. Windows targeting both hosts
+and groups can only have been made in the native UI, and are listed but not
+editable here.
+
+One deliberate difference. A pasted list is explicit, so disabled hosts are
+kept and flagged. A group selection is a sweep, and sweeping in every disabled
+box in a group is almost never what anyone meant, so the select path leaves
+them out unless you tick *Include disabled hosts*. Editing a window always
+loads it back into the paste box, whichever way it was originally built.
+
+**Matching, paste path.** One line is one host. Newlines separate rows; commas, semicolons
 and tabs separate columns within a row, and the columns are treated as
 alternative identifiers for that same host, not as separate hosts.
 
@@ -287,6 +335,7 @@ maintwin/
 │   ├── ZbxApi.php              service-token JSON-RPC client
 │   ├── View.php                both pages (getAction() decides which)
 │   ├── Verify.php              resolve a pasted list
+│   ├── Select.php              resolve a group / host / tag selection
 │   ├── Create.php              build and submit the window
 │   ├── Update.php              load, extend, edit
 │   ├── InMaint.php             every suppressed host, from host status

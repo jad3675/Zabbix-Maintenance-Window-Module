@@ -8,6 +8,17 @@
  */
 
 $boot = json_encode([
+	'tag_operators' => [
+		TAG_OPERATOR_EXISTS => _('Exists'),
+		TAG_OPERATOR_EQUAL => _('Equals'),
+		TAG_OPERATOR_LIKE => _('Contains'),
+		TAG_OPERATOR_NOT_EXISTS => _('Does not exist'),
+		TAG_OPERATOR_NOT_EQUAL => _('Does not equal'),
+		TAG_OPERATOR_NOT_LIKE => _('Does not contain')
+	],
+	'tag_op_exists' => TAG_OPERATOR_EXISTS,
+	'tag_op_not_exists' => TAG_OPERATOR_NOT_EXISTS,
+	'tag_op_default' => TAG_OPERATOR_LIKE,
 	'page' => $data['page'],
 	'edit' => $data['edit'],
 	'schedule_url' => 'zabbix.php?action=maintwin.view',
@@ -49,26 +60,128 @@ $e = static function ($value): string {
 	<section id="ml-panel-new" class="ml-panel">
 
 		<div class="ml-step">
-			<h2 class="ml-step-title"><span class="ml-step-num">1</span><?= $e(_('Paste the hosts')) ?></h2>
-			<p class="ml-hint"><?= $e(_('One host per line. Columns separated by comma, semicolon or tab are alternative identifiers for that same host: column 1 is tried first, then column 2, and so on until one matches. Each column is matched against technical name, visible name, interface IP and interface DNS in that order.')) ?></p>
+			<h2 class="ml-step-title"><span class="ml-step-num">1</span><?= $e(_('Find the hosts')) ?></h2>
 
-			<textarea id="ml-input" class="ml-textarea" spellcheck="false" autocapitalize="off" autocorrect="off"
-				placeholder="core-sw-01,10.20.30.41&#10;core-sw-02,10.20.30.42&#10;esx-host-07.corp.local&#10;10.20.30.9"></textarea>
+			<div class="ml-seg ml-mode-seg" id="ml-mode">
+				<button type="button" class="ml-seg-btn ml-seg-active" data-pickmode="paste"><?= $e(_('Paste a list')) ?></button>
+				<button type="button" class="ml-seg-btn" data-pickmode="select"><?= $e(_('Select by group, host or tag')) ?></button>
+			</div>
 
-			<div class="ml-row">
-				<button type="button" id="ml-verify" class="ml-btn ml-btn-primary"><?= $e(_('Verify')) ?></button>
-				<label class="ml-file">
-					<input type="file" id="ml-file" accept=".csv,.txt,text/csv,text/plain">
-					<span><?= $e(_('Load a file')) ?></span>
-				</label>
-				<button type="button" id="ml-clear" class="ml-btn ml-btn-plain"><?= $e(_('Clear')) ?></button>
-				<span id="ml-input-count" class="ml-muted"></span>
+			<!-- ---- mode: paste ---- -->
+			<div id="ml-pick-paste" class="ml-pickpane">
+				<p class="ml-hint"><?= $e(_('One host per line. Columns separated by comma, semicolon or tab are alternative identifiers for that same host: column 1 is tried first, then column 2, and so on until one matches. Each column is matched against technical name, visible name, interface IP and interface DNS in that order.')) ?></p>
+
+				<textarea id="ml-input" class="ml-textarea" spellcheck="false" autocapitalize="off" autocorrect="off"
+					placeholder="core-sw-01,10.20.30.41&#10;core-sw-02,10.20.30.42&#10;esx-host-07.corp.local&#10;10.20.30.9"></textarea>
+
+				<div class="ml-row">
+					<button type="button" id="ml-verify" class="ml-btn ml-btn-primary"><?= $e(_('Verify')) ?></button>
+					<label class="ml-file">
+						<input type="file" id="ml-file" accept=".csv,.txt,text/csv,text/plain">
+						<span><?= $e(_('Load a file')) ?></span>
+					</label>
+					<button type="button" id="ml-clear" class="ml-btn ml-btn-plain"><?= $e(_('Clear')) ?></button>
+					<span id="ml-input-count" class="ml-muted"></span>
+				</div>
+			</div>
+
+			<!-- ---- mode: select ---- -->
+			<div id="ml-pick-select" class="ml-pickpane ml-hidden">
+				<p class="ml-hint"><?= $e(_('The same pickers as the rest of Zabbix. Everything matching the host groups, hosts and tags together goes into the window. Leave a picker empty to not filter on it.')) ?></p>
+
+				<?php
+				// Zabbix's own multiselects, so the popup, search and chips
+				// behave exactly as they do on Monitoring -> Hosts. They need
+				// a named form to attach to, hence the wrapper; it never
+				// submits.
+				?>
+				<form name="maintwin_pick" id="maintwin_pick" onsubmit="return false;" class="ml-pickform">
+					<div class="ml-form">
+						<div class="ml-field">
+							<label for="groupids__ms"><?= $e(_('Host groups')) ?></label>
+							<?= (new CMultiSelect([
+								'name' => 'groupids[]',
+								'object_name' => 'hostGroup',
+								'data' => [],
+								'popup' => [
+									'parameters' => [
+										'srctbl' => 'host_groups',
+										'srcfld1' => 'groupid',
+										'dstfrm' => 'maintwin_pick',
+										'dstfld1' => 'groupids_',
+										'with_hosts' => true
+									]
+								]
+							]))->setWidth(ZBX_TEXTAREA_FILTER_STANDARD_WIDTH)->toString() ?>
+						</div>
+
+						<div class="ml-field">
+							<label for="hostids__ms"><?= $e(_('Hosts')) ?></label>
+							<?= (new CMultiSelect([
+								'name' => 'hostids[]',
+								'object_name' => 'hosts',
+								'data' => [],
+								'popup' => [
+									// Pre-filter the host popup by whatever group
+									// is already chosen above.
+									'filter_preselect' => [
+										'id' => 'groupids_',
+										'submit_as' => 'groupid'
+									],
+									'parameters' => [
+										'srctbl' => 'hosts',
+										'srcfld1' => 'hostid',
+										'dstfrm' => 'maintwin_pick',
+										'dstfld1' => 'hostids_'
+									]
+								]
+							]))->setWidth(ZBX_TEXTAREA_FILTER_STANDARD_WIDTH)->toString() ?>
+						</div>
+
+						<div class="ml-field ml-field-wide">
+							<label><?= $e(_('Host tags')) ?></label>
+							<div class="ml-inline ml-evaltype">
+								<div class="ml-seg" id="ml-evaltype">
+									<button type="button" class="ml-seg-btn ml-seg-active" data-evaltype="<?= TAG_EVAL_TYPE_AND_OR ?>"><?= $e(_('And/Or')) ?></button>
+									<button type="button" class="ml-seg-btn" data-evaltype="<?= TAG_EVAL_TYPE_OR ?>"><?= $e(_('Or')) ?></button>
+								</div>
+							</div>
+							<table class="ml-tagtable" id="ml-tags">
+								<tbody></tbody>
+							</table>
+							<button type="button" id="ml-tag-add" class="ml-btn ml-btn-plain ml-mini"><?= $e(_('Add')) ?></button>
+						</div>
+
+						<div class="ml-field ml-field-wide">
+							<label class="ml-check"><input type="checkbox" id="ml-include-disabled"> <?= $e(_('Include disabled hosts')) ?></label>
+							<p class="ml-hint ml-hint-inline"><?= $e(_('A group selection sweeps in every member. Disabled hosts are left out unless you ask, since suppressing a host that is not being monitored does nothing useful.')) ?></p>
+						</div>
+					</div>
+
+					<div class="ml-row">
+						<button type="button" id="ml-find" class="ml-btn ml-btn-primary"><?= $e(_('Find hosts')) ?></button>
+						<button type="button" id="ml-select-clear" class="ml-btn ml-btn-plain"><?= $e(_('Clear')) ?></button>
+					</div>
+				</form>
 			</div>
 		</div>
 
 		<div class="ml-step ml-hidden" id="ml-step-verify">
 			<h2 class="ml-step-title"><span class="ml-step-num">2</span><?= $e(_('Check the matches')) ?></h2>
 			<div id="ml-summary" class="ml-summary"></div>
+
+			<!--
+				Only shown for the select path. A groups-only selection can be
+				targeted live; anything narrower can only be a snapshot, and the
+				note says why rather than leaving the choice silently missing.
+			-->
+			<div id="ml-target" class="ml-target ml-hidden">
+				<div class="ml-seg" id="ml-target-seg">
+					<button type="button" class="ml-seg-btn ml-seg-active" data-target="group"><?= $e(_('Target the group (stays current)')) ?></button>
+					<button type="button" class="ml-seg-btn" data-target="hosts"><?= $e(_('Snapshot today\'s members')) ?></button>
+				</div>
+				<p id="ml-target-note" class="ml-hint ml-hint-inline"></p>
+			</div>
 			<div class="ml-row ml-filter-row">
 				<label class="ml-check"><input type="checkbox" id="ml-only-problems"> <?= $e(_('Only show entries that need attention')) ?></label>
 				<button type="button" id="ml-copy-missing" class="ml-btn ml-btn-plain ml-hidden"><?= $e(_('Copy unmatched rows')) ?></button>

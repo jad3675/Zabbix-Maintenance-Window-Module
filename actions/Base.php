@@ -199,6 +199,12 @@ abstract class Base extends CController {
 			'Hosts:        '.(int) ($parts['hosts'] ?? 0)
 		];
 
+		if (!empty($parts['groups'])) {
+			// A group target has no fixed host count; the line above records
+			// what was in it at the time, this one says it is live.
+			$lines[] = 'Groups:       '.$parts['groups'].' (stays current)';
+		}
+
 		if (!empty($parts['schedule'])) {
 			$lines[] = 'Schedule:     '.$parts['schedule'];
 		}
@@ -546,26 +552,34 @@ abstract class Base extends CController {
 				continue;
 			}
 
-			$host = $hosts[$winner['hostids'][0]];
-
-			$out[] = [
+			$out[] = $this->describeHost($hosts[$winner['hostids'][0]]) + [
 				'token' => $row['raw'],
 				'status' => 'ok',
 				'column' => $winning_col,
 				'columns' => count($row['fields']),
 				'matched_on' => $winner['matched_on'],
 				'matched_value' => $winner['field'],
-				'conflicts' => $conflicts,
-				'hostid' => $host['hostid'],
-				'host' => $host['host'],
-				'name' => $host['name'],
-				'enabled' => ((int) $host['status'] === HOST_STATUS_MONITORED),
-				'in_maintenance' => ((int) $host['maintenance_status'] === HOST_MAINTENANCE_STATUS_ON),
-				'ip' => $this->firstIp($host)
+				'conflicts' => $conflicts
 			];
 		}
 
 		return $out;
+	}
+
+	/**
+	 * The host half of a step-2 row. Both ways of finding hosts (Verify's
+	 * paste resolution and Select's group/host/tag query) build on this, so
+	 * the table, the create path and the edit path see one shape.
+	 */
+	protected function describeHost(array $host): array {
+		return [
+			'hostid' => (string) $host['hostid'],
+			'host' => (string) $host['host'],
+			'name' => (string) $host['name'],
+			'enabled' => ((int) $host['status'] === HOST_STATUS_MONITORED),
+			'in_maintenance' => ((int) $host['maintenance_status'] === HOST_MAINTENANCE_STATUS_ON),
+			'ip' => $this->firstIp($host)
+		];
 	}
 
 	protected function firstIp(array $host): string {
@@ -600,6 +614,127 @@ abstract class Base extends CController {
 		]);
 
 		return array_keys($hosts);
+	}
+
+	/**
+	 * What a create or edit should target, from the posted target/hostids/
+	 * groupids, re-checked as the logged-in user. Never trusts the browser.
+	 *
+	 * @return array ['hostids' => [], 'groupids' => [], 'dropped' => int] or ['error' => string]
+	 */
+	protected function resolveTargets(): array {
+		if ($this->getInput('target', 'hosts') === 'group') {
+			$submitted = (array) $this->getInput('groupids', []);
+			$groupids = $this->visibleGroupids($submitted);
+
+			if (!$groupids) {
+				return ['error' => _('None of those host groups are visible to you. Select them again.')];
+			}
+
+			return [
+				'hostids' => [],
+				'groupids' => $groupids,
+				'dropped' => count(array_unique($submitted)) - count($groupids)
+			];
+		}
+
+		$submitted = (array) $this->getInput('hostids', []);
+		$hostids = $this->visibleHostids($submitted);
+
+		if (!$hostids) {
+			return ['error' => _('None of those hosts resolved. Verify the list again.')];
+		}
+
+		$max = (int) $this->config('max_hosts', 2000);
+
+		if (count($hostids) > $max) {
+			return ['error' => sprintf(_('%d hosts exceeds the configured limit of %d.'), count($hostids), $max)];
+		}
+
+		return [
+			'hostids' => $hostids,
+			'groupids' => [],
+			'dropped' => count(array_unique($submitted)) - count($hostids)
+		];
+	}
+
+	/** How many hosts the user can see in these groups right now. */
+	protected function memberCount(array $groupids): int {
+		return $groupids
+			? (int) API::Host()->get(['groupids' => $groupids, 'countOutput' => true])
+			: 0;
+	}
+
+	/** "group A, group B" for messages and the description. */
+	protected function groupLabel(array $groupids): string {
+		$names = array_column($this->groupNames($groupids), 'name');
+
+		return $names ? implode(', ', $names) : sprintf(_('%d host groups'), count($groupids));
+	}
+
+	/** Same idea as visibleHostids, for host groups. */
+	protected function visibleGroupids(array $groupids): array {
+		if (!$groupids) {
+			return [];
+		}
+
+		return array_keys(API::HostGroup()->get([
+			'output' => ['groupid'],
+			'groupids' => array_values(array_unique(array_map('strval', $groupids))),
+			'preservekeys' => true
+		]));
+	}
+
+	/** Group records as the logged-in user, name-sorted. */
+	protected function groupNames(array $groupids): array {
+		if (!$groupids) {
+			return [];
+		}
+
+		return API::HostGroup()->get([
+			'output' => ['groupid', 'name'],
+			'groupids' => array_values(array_unique(array_map('strval', $groupids))),
+			'sortfield' => 'name'
+		]);
+	}
+
+	/**
+	 * A window fetched through the service token, with its hosts and groups
+	 * normalised to plain id lists under 'hosts' and 'groups' whatever the
+	 * server version calls them.
+	 *
+	 * @throws \Exception
+	 */
+	protected function fetchWindows(array $options): array {
+		[$select, $key] = $this->api()->groupSelector();
+
+		$options += [
+			'selectHosts' => ['hostid', 'host', 'name'],
+			$select => ['groupid', 'name']
+		];
+
+		$windows = (array) $this->api()->call('maintenance.get', $options);
+
+		foreach ($windows as &$window) {
+			$window['groups'] = (array) ($window[$key] ?? []);
+			$window['hosts'] = (array) ($window['hosts'] ?? []);
+		}
+		unset($window);
+
+		return $windows;
+	}
+
+	/**
+	 * Can the logged-in user act on this window? They need to see at least one
+	 * host OR one group in it. Group targets are why the group half exists: a
+	 * dynamic window over an empty group has no hosts at all today, and is
+	 * still perfectly legitimate.
+	 */
+	protected function canSeeWindow(array $window): bool {
+		$hostids = array_column($window['hosts'], 'hostid');
+		$groupids = array_column($window['groups'], 'groupid');
+
+		return (bool) $this->visibleHostids($hostids) || (bool) $this->visibleGroupids($groupids);
 	}
 
 	/**

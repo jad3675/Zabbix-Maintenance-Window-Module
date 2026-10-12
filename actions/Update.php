@@ -32,6 +32,8 @@ class Update extends Base {
 
 			// edit
 			'hostids' => 'array_id',
+			'groupids' => 'array_id',
+			'target' => 'in hosts,group',
 			'window_name' => 'string',
 			'ticket' => 'string',
 			'note' => 'string'
@@ -91,11 +93,10 @@ class Update extends Base {
 	 * @throws \Exception
 	 */
 	private function loadOwn(string $maintenanceid): array {
-		$found = $this->api()->call('maintenance.get', [
+		$found = $this->fetchWindows([
 			'output' => ['maintenanceid', 'name', 'description', 'maintenance_type',
 				'active_since', 'active_till'
 			],
-			'selectHosts' => ['hostid'],
 			'selectTimeperiods' => 'extend',
 			'maintenanceids' => [$maintenanceid]
 		]);
@@ -110,14 +111,8 @@ class Update extends Base {
 			throw new \Exception(_('That window was not created here, so this page will not change it.'));
 		}
 
-		$hostids = [];
-
-		foreach ((array) $maintenance['hosts'] as $host) {
-			$hostids[] = (string) $host['hostid'];
-		}
-
-		if (!$this->visibleHostids($hostids)) {
-			throw new \Exception(_('You do not have permission to any of the hosts in that window.'));
+		if (!$this->canSeeWindow($maintenance)) {
+			throw new \Exception(_('You do not have permission to any of the hosts or host groups in that window.'));
 		}
 
 		if ($this->config('own_windows_only', false) && $this->getUserType() != USER_TYPE_SUPER_ADMIN) {
@@ -153,13 +148,19 @@ class Update extends Base {
 			(int) $maintenance['active_till']
 		);
 
-		$hostids = [];
+		$hostids = array_map('strval', array_column($maintenance['hosts'], 'hostid'));
+		$groupids = array_map('strval', array_column($maintenance['groups'], 'groupid'));
 
-		foreach ((array) $maintenance['hosts'] as $host) {
-			$hostids[] = (string) $host['hostid'];
+		// This module writes either a host list or a group target, never both.
+		// A window carrying both was edited in the native UI, and this form
+		// has no way to show it without flattening one half into the other.
+		if ($hostids && $groupids) {
+			$this->jsonError(_('That window targets both hosts and host groups. Edit it in Data collection -> Maintenance instead.'));
+			return;
 		}
 
 		$visible = $this->visibleHostids($hostids);
+		$visible_groups = $this->visibleGroupids($groupids);
 
 		$hosts = [];
 
@@ -168,6 +169,12 @@ class Update extends Base {
 		}
 
 		sort($hosts, SORT_NATURAL | SORT_FLAG_CASE);
+
+		$groups = [];
+
+		foreach ($this->groupNames($visible_groups) as $group) {
+			$groups[] = ['id' => (string) $group['groupid'], 'name' => (string) $group['name']];
+		}
 
 		$this->json([
 			'ok' => true,
@@ -178,8 +185,12 @@ class Update extends Base {
 			'ticket' => $this->descriptionField((string) $maintenance['description'], 'Ticket'),
 			'note' => $this->descriptionNote((string) $maintenance['description']),
 			'form' => $form,
+			'target' => $groupids ? 'group' : 'hosts',
 			'hosts' => $hosts,
-			'hidden_count' => count($hostids) - count($visible)
+			'hidden_count' => count($hostids) - count($visible),
+			// Shaped for Zabbix's multiselect addData(): {id, name}.
+			'groups' => $groups,
+			'hidden_groups' => count($groupids) - count($visible_groups)
 		]);
 	}
 
@@ -261,26 +272,41 @@ class Update extends Base {
 			return;
 		}
 
-		// Host list: keep whatever is in there that this user cannot see, and
-		// replace the visible half with what they submitted. Filtering the
-		// existing list through visibleHostids would quietly evict hosts that
-		// belong to somebody else's permission scope.
-		$existing = [];
+		// Targets. One rule for both lists: whatever this user cannot see is
+		// kept exactly as it was, and the visible half is replaced with what
+		// they submitted. Filtering the existing lists through the visibility
+		// check would quietly evict hosts and groups that belong to somebody
+		// else's permission scope.
+		//
+		// The submitted side is a host list OR a group target, never both, so
+		// switching a window from one to the other on edit clears the visible
+		// part of whichever it was before.
+		$existing_hosts = array_map('strval', array_column($maintenance['hosts'], 'hostid'));
+		$existing_groups = array_map('strval', array_column($maintenance['groups'], 'groupid'));
 
-		foreach ((array) $maintenance['hosts'] as $host) {
-			$existing[] = (string) $host['hostid'];
+		$locked_hosts = array_values(array_diff($existing_hosts, $this->visibleHostids($existing_hosts)));
+		$locked_groups = array_values(array_diff($existing_groups, $this->visibleGroupids($existing_groups)));
+
+		$new_hosts = [];
+		$new_groups = [];
+		$dropped = 0;
+
+		if ($this->getInput('target', 'hosts') === 'group') {
+			$posted = (array) $this->getInput('groupids', []);
+			$new_groups = $this->visibleGroupids($posted);
+			$dropped = count(array_unique($posted)) - count($new_groups);
+		}
+		else {
+			$posted = (array) $this->getInput('hostids', []);
+			$new_hosts = $this->visibleHostids($posted);
+			$dropped = count(array_unique($posted)) - count($new_hosts);
 		}
 
-		$existing_visible = $this->visibleHostids($existing);
-		$locked = array_values(array_diff($existing, $existing_visible));
+		$hostids = array_values(array_unique(array_merge($locked_hosts, $new_hosts)));
+		$groupids = array_values(array_unique(array_merge($locked_groups, $new_groups)));
 
-		$submitted = $this->visibleHostids((array) $this->getInput('hostids', []));
-		$dropped = count(array_unique((array) $this->getInput('hostids', []))) - count($submitted);
-
-		$hostids = array_values(array_unique(array_merge($locked, $submitted)));
-
-		if (!$hostids) {
-			$this->jsonError(_('A maintenance window needs at least one host. End it instead.'));
+		if (!$hostids && !$groupids) {
+			$this->jsonError(_('A maintenance window needs at least one host or host group. End it instead.'));
 			return;
 		}
 
@@ -315,7 +341,8 @@ class Update extends Base {
 		), 0, 128);
 
 		$description = $this->buildDescription([
-			'hosts' => count($hostids),
+			'hosts' => count($hostids) + $this->memberCount($groupids),
+			'groups' => $groupids ? $this->groupLabel($groupids) : '',
 			'schedule' => $this->describeTimeperiod($schedule['timeperiod']),
 			'ticket' => trim((string) $this->getInput('ticket', '')),
 			'note' => trim((string) $this->getInput('note', '')),
@@ -336,7 +363,7 @@ class Update extends Base {
 			'timeperiods' => [$schedule['timeperiod']]
 		];
 
-		$params += $this->api()->hostsParam($hostids);
+		$params += $this->api()->targetsParam($hostids, $groupids);
 
 		try {
 			$this->api()->call('maintenance.update', $params);
@@ -352,11 +379,11 @@ class Update extends Base {
 			'name' => $name,
 			'hosts' => count($hostids),
 			'dropped' => max(0, $dropped),
-			'message' => sprintf(
-				_('Saved. %1$d hosts, %2$s'),
-				count($hostids),
-				$this->describeTimeperiod($schedule['timeperiod'])
-			)
+			'message' => $groupids
+				? sprintf(_('Saved. Targets %1$s, which stays current as the group changes. %2$s'),
+					$this->groupLabel($groupids), $this->describeTimeperiod($schedule['timeperiod']))
+				: sprintf(_('Saved. %1$d hosts, %2$s'),
+					count($hostids), $this->describeTimeperiod($schedule['timeperiod']))
 		]);
 	}
 

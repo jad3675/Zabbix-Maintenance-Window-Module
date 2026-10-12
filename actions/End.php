@@ -29,9 +29,8 @@ class End extends Base {
 		$maintenanceid = (string) $this->getInput('maintenanceid');
 
 		try {
-			$found = $this->api()->call('maintenance.get', [
+			$found = $this->fetchWindows([
 				'output' => ['maintenanceid', 'name', 'description'],
-				'selectHosts' => ['hostid'],
 				'maintenanceids' => [$maintenanceid]
 			]);
 		}
@@ -55,15 +54,10 @@ class End extends Base {
 			return;
 		}
 
-		// Guard 2: the user must be able to see at least one host in it.
-		$hostids = [];
-
-		foreach ((array) $maintenance['hosts'] as $host) {
-			$hostids[] = $host['hostid'];
-		}
-
-		if (!$this->visibleHostids($hostids)) {
-			$this->jsonError(_('You do not have permission to any of the hosts in that window.'));
+		// Guard 2: the user must be able to see at least one host or host
+		// group in it.
+		if (!$this->canSeeWindow($maintenance)) {
+			$this->jsonError(_('You do not have permission to any of the hosts or host groups in that window.'));
 			return;
 		}
 

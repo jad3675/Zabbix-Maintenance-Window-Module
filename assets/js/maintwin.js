@@ -27,6 +27,12 @@
 			monthly_mode: 'day',
 			collect: CFG.default_collect_data ? 1 : 0,
 			editing: null,
+			pickmode: 'paste',
+			source: 'paste',
+			target: 'hosts',
+			dynamic_ok: false,
+			groups: [],
+			evaltype: '0',
 			busy: false
 		};
 
@@ -266,6 +272,10 @@
 			input.value = '';
 			state.rows = [];
 			state.hostids = [];
+			state.groups = [];
+			state.dynamic_ok = false;
+			setTarget('hosts');
+			$('ml-target').classList.add('ml-hidden');
 			state.editing = null;
 			countEntries();
 			$('ml-step-verify').classList.add('ml-hidden');
@@ -311,8 +321,308 @@
 		});
 
 		/* ---------------------------------------------------------------- */
+		/* step 1, second way in: group / host / tag selection              */
+		/* ---------------------------------------------------------------- */
+
+		function setPickMode(mode) {
+			state.pickmode = mode;
+
+			all('.ml-seg-btn', $('ml-mode')).forEach(function (btn) {
+				btn.classList.toggle('ml-seg-active', btn.getAttribute('data-pickmode') === mode);
+			});
+
+			$('ml-pick-paste').classList.toggle('ml-hidden', mode !== 'paste');
+			$('ml-pick-select').classList.toggle('ml-hidden', mode !== 'select');
+		}
+
+		all('.ml-seg-btn', $('ml-mode')).forEach(function (btn) {
+			btn.addEventListener('click', function () {
+				setPickMode(btn.getAttribute('data-pickmode'));
+			});
+		});
+
+		all('.ml-seg-btn', $('ml-evaltype')).forEach(function (btn) {
+			btn.addEventListener('click', function () {
+				state.evaltype = btn.getAttribute('data-evaltype');
+
+				all('.ml-seg-btn', $('ml-evaltype')).forEach(function (other) {
+					other.classList.toggle('ml-seg-active', other === btn);
+				});
+			});
+		});
+
+		/** One tag filter row: [tag] [operator] [value] [remove]. */
+		function addTagRow(values) {
+			values = values || {};
+
+			var tbody = $('ml-tags').tBodies[0];
+			var tag = el('input', {type: 'text', placeholder: 'tag', class: 'ml-taginput', value: values.tag || ''});
+			var op = el('select', {class: 'ml-tagop'});
+			var val = el('input', {type: 'text', placeholder: 'value', class: 'ml-taginput', value: values.value || ''});
+			var remove = el('button', {type: 'button', class: 'ml-btn ml-btn-plain ml-mini', text: 'Remove'});
+
+			Object.keys(CFG.tag_operators).forEach(function (code) {
+				op.appendChild(el('option', {value: code, text: CFG.tag_operators[code]}));
+			});
+
+			op.value = values.operator !== undefined ? String(values.operator) : String(CFG.tag_op_default);
+
+			// Exists / Does not exist take no value. Hide the box rather than
+			// leaving it there to be filled in and silently ignored.
+			function syncValue() {
+				var no_value = (op.value === String(CFG.tag_op_exists) || op.value === String(CFG.tag_op_not_exists));
+				val.classList.toggle('ml-hidden', no_value);
+			}
+
+			op.addEventListener('change', syncValue);
+			syncValue();
+
+			var row = el('tr', {}, [
+				el('td', {}, [tag]),
+				el('td', {}, [op]),
+				el('td', {}, [val]),
+				el('td', {}, [remove])
+			]);
+
+			remove.addEventListener('click', function () {
+				tbody.removeChild(row);
+
+				if (!tbody.children.length) {
+					addTagRow();
+				}
+			});
+
+			tbody.appendChild(row);
+			return row;
+		}
+
+		function readTagRows() {
+			return all('tr', $('ml-tags').tBodies[0]).map(function (row) {
+				var inputs = all('input', row);
+				var op = row.querySelector('select');
+
+				return {
+					tag: inputs[0].value.trim(),
+					operator: parseInt(op.value, 10),
+					value: inputs[1].classList.contains('ml-hidden') ? '' : inputs[1].value
+				};
+			}).filter(function (row) {
+				return row.tag !== '';
+			});
+		}
+
+		$('ml-tag-add').addEventListener('click', function () {
+			addTagRow();
+		});
+
+		addTagRow();
+
+		/** Replace a Zabbix multiselect's contents with [{id, name}, ...]. */
+		function setMultiselect(id, items) {
+			var node = document.getElementById(id);
+
+			if (!node || !window.jQuery || !window.jQuery.fn.multiSelect) {
+				return;
+			}
+
+			try {
+				window.jQuery(node).multiSelect('clean');
+
+				if (items.length) {
+					window.jQuery(node).multiSelect('addData', items);
+				}
+			}
+			catch (err) {
+				// Leave it; the operator can pick the group by hand.
+			}
+		}
+
+		/** Zabbix's multiselect keeps its own state; ask it. */
+		function multiselectIds(id) {
+			var node = document.getElementById(id);
+
+			if (!node || !window.jQuery || !window.jQuery.fn.multiSelect) {
+				return [];
+			}
+
+			try {
+				return (window.jQuery(node).multiSelect('getData') || []).map(function (item) {
+					return String(item.id);
+				});
+			}
+			catch (err) {
+				return [];
+			}
+		}
+
+		function findSelected() {
+			if (state.busy) {
+				return Promise.resolve(null);
+			}
+
+			var payload = {
+				groupids: multiselectIds('groupids_'),
+				hostids: multiselectIds('hostids_'),
+				tags_json: JSON.stringify(readTagRows()),
+				evaltype: state.evaltype,
+				include_disabled: $('ml-include-disabled').checked ? '1' : '0'
+			};
+
+			if (!payload.groupids.length && !payload.hostids.length && payload.tags_json === '[]') {
+				$('ml-step-verify').classList.remove('ml-hidden');
+				banner($('ml-summary'), 'bad', 'Pick at least one host group, host or tag.');
+				return Promise.resolve(null);
+			}
+
+			state.busy = true;
+			$('ml-find').disabled = true;
+			$('ml-find').textContent = 'Searching...';
+
+			return post('maintwin.select', payload)
+				.then(acceptResolved)
+				.catch(resolveFailed)
+				.then(function (data) {
+					state.busy = false;
+					$('ml-find').disabled = false;
+					$('ml-find').textContent = 'Find hosts';
+
+					if (data && state.hostids.length) {
+						$('ml-step-window').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+					}
+
+					return data;
+				});
+		}
+
+		$('ml-find').addEventListener('click', findSelected);
+
+		$('ml-select-clear').addEventListener('click', function () {
+			['groupids_', 'hostids_'].forEach(function (id) {
+				var node = document.getElementById(id);
+
+				if (node && window.jQuery && window.jQuery.fn.multiSelect) {
+					try {
+						window.jQuery(node).multiSelect('clean');
+					}
+					catch (err) {
+						// Older multiselect without clean(); leave it.
+					}
+				}
+			});
+
+			clear($('ml-tags').tBodies[0]);
+			addTagRow();
+			$('ml-include-disabled').checked = false;
+			state.rows = [];
+			state.hostids = [];
+			state.groups = [];
+			state.dynamic_ok = false;
+			setTarget('hosts');
+			$('ml-target').classList.add('ml-hidden');
+			$('ml-step-verify').classList.add('ml-hidden');
+			$('ml-step-window').classList.add('ml-hidden');
+			clear($('ml-create-result'));
+		});
+
+		/* ---------------------------------------------------------------- */
 		/* step 2: verify                                                   */
 		/* ---------------------------------------------------------------- */
+
+		/**
+		 * Both ways of finding hosts end here. Whichever path produced the
+		 * list, steps 2 and 3 do not care.
+		 */
+		function acceptResolved(data) {
+			if (data.error) {
+				$('ml-step-verify').classList.remove('ml-hidden');
+				banner($('ml-summary'), 'bad', data.error);
+				clear($('ml-results').tBodies[0]);
+				$('ml-step-window').classList.add('ml-hidden');
+				return null;
+			}
+
+			state.rows = data.rows;
+			state.hostids = data.hostids;
+			state.source = data.source || 'paste';
+			state.dynamic_ok = !!data.dynamic_ok;
+			state.groups = data.groups || [];
+
+			// Groups-only selections default to the live target: for a recurring
+			// window that is almost always what was meant, and the snapshot is
+			// one click away. Everything else is a host list, as before.
+			setTarget(state.dynamic_ok ? 'group' : 'hosts');
+
+			$('ml-step-verify').classList.remove('ml-hidden');
+			renderSummary(data.counts);
+			renderRows();
+			renderTarget(data);
+
+			showStepWindow();
+			updatePreview();
+
+			return data;
+		}
+
+		/**
+		 * Step 3 appears when there is something to target. A live group
+		 * target counts even with zero members today: an empty group that
+		 * will be filled before the window opens is a perfectly good window.
+		 */
+		function showStepWindow() {
+			var has = state.hostids.length > 0 || (state.target === 'group' && state.groups.length > 0);
+			$('ml-step-window').classList.toggle('ml-hidden', !has);
+		}
+
+		function setTarget(target) {
+			state.target = target;
+
+			all('.ml-seg-btn', $('ml-target-seg')).forEach(function (btn) {
+				btn.classList.toggle('ml-seg-active', btn.getAttribute('data-target') === target);
+			});
+		}
+
+		function renderTarget(data) {
+			var box = $('ml-target');
+			var note = $('ml-target-note');
+
+			if (state.source !== 'select') {
+				box.classList.add('ml-hidden');
+				return;
+			}
+
+			box.classList.remove('ml-hidden');
+			$('ml-target-seg').classList.toggle('ml-hidden', !state.dynamic_ok);
+
+			if (state.dynamic_ok) {
+				var names = state.groups.map(function (g) {
+					return g.name;
+				}).join(', ');
+
+				note.textContent = state.target === 'group'
+					? 'The window will target ' + names + ' itself. Hosts added to the group later are covered; '
+						+ 'hosts removed drop out. The list above is who is in it today.'
+					: 'The ' + state.hostids.length + ' hosts above are fixed into the window. '
+						+ 'Hosts added to ' + names + ' later are not covered, and hosts removed stay in.';
+			}
+			else {
+				note.textContent = data.snapshot_reason || '';
+			}
+		}
+
+		all('.ml-seg-btn', $('ml-target-seg')).forEach(function (btn) {
+			btn.addEventListener('click', function () {
+				setTarget(btn.getAttribute('data-target'));
+				renderTarget({});
+				showStepWindow();
+				updatePreview();
+			});
+		});
+
+		function resolveFailed(err) {
+			$('ml-step-verify').classList.remove('ml-hidden');
+			banner($('ml-summary'), 'bad', err.message);
+			return null;
+		}
 
 		function verify() {
 			if (state.busy || input.value.trim() === '') {
@@ -324,32 +634,8 @@
 			$('ml-verify').textContent = 'Checking...';
 
 			return post('maintwin.verify', {hosts: input.value})
-				.then(function (data) {
-					if (data.error) {
-						$('ml-step-verify').classList.remove('ml-hidden');
-						banner($('ml-summary'), 'bad', data.error);
-						clear($('ml-results').tBodies[0]);
-						$('ml-step-window').classList.add('ml-hidden');
-						return null;
-					}
-
-					state.rows = data.rows;
-					state.hostids = data.hostids;
-
-					$('ml-step-verify').classList.remove('ml-hidden');
-					renderSummary(data.counts);
-					renderRows();
-
-					$('ml-step-window').classList.toggle('ml-hidden', state.hostids.length === 0);
-					updatePreview();
-
-					return data;
-				})
-				.catch(function (err) {
-					$('ml-step-verify').classList.remove('ml-hidden');
-					banner($('ml-summary'), 'bad', err.message);
-					return null;
-				})
+				.then(acceptResolved)
+				.catch(resolveFailed)
 				.then(function (data) {
 					state.busy = false;
 					$('ml-verify').disabled = false;
@@ -451,9 +737,11 @@
 					}
 
 					note = notes.join('; ');
-					matched = row.columns > 1
-						? 'col ' + row.column + ' \u00B7 ' + row.matched_on
-						: row.matched_on;
+					matched = row.matched_on === 'selected'
+						? 'selected'
+						: (row.columns > 1
+							? 'col ' + row.column + ' \u00B7 ' + row.matched_on
+							: row.matched_on);
 				}
 
 				if ((row.conflicts || []).length && meta.cls === 'ok') {
@@ -822,10 +1110,20 @@
 					? 'Put them in maintenance'
 					: 'Schedule the window');
 
-			box.appendChild(el('span', {class: 'ml-preview-count'}, [
-				el('b', {text: String(state.hostids.length)}),
-				state.hostids.length === 1 ? ' host' : ' hosts'
-			]));
+			if (state.target === 'group') {
+				box.appendChild(el('span', {class: 'ml-preview-count'}, [
+					el('b', {text: state.groups.map(function (g) {
+						return g.name;
+					}).join(', ')}),
+					' (stays current, ' + state.hostids.length + (state.hostids.length === 1 ? ' host' : ' hosts') + ' today)'
+				]));
+			}
+			else {
+				box.appendChild(el('span', {class: 'ml-preview-count'}, [
+					el('b', {text: String(state.hostids.length)}),
+					state.hostids.length === 1 ? ' host' : ' hosts'
+				]));
+			}
 			box.appendChild(el('span', {
 				class: 'ml-preview-when',
 				text: when + '  \u00B7  ' + (state.collect ? 'data collected' : 'no data')
@@ -839,13 +1137,24 @@
 		/* ---------------------------------------------------------------- */
 
 		$('ml-create').addEventListener('click', function () {
-			if (state.busy || !state.hostids.length || currentDuration() === null) {
+			var has_target = state.target === 'group' ? state.groups.length > 0 : state.hostids.length > 0;
+
+			if (state.busy || !has_target || currentDuration() === null) {
 				return;
 			}
 
 			var payload = readSchedule();
 
-			payload.hostids = state.hostids;
+			payload.target = state.target;
+
+			if (state.target === 'group') {
+				payload.groupids = state.groups.map(function (g) {
+					return g.groupid;
+				});
+			}
+			else {
+				payload.hostids = state.hostids;
+			}
 			payload.window_name = $('ml-name').value;
 			payload.ticket = $('ml-ticket').value;
 			payload.note = $('ml-note').value;
@@ -923,10 +1232,43 @@
 					setCollect(data.collect);
 					writeSchedule(data.form);
 
-					input.value = data.hosts.join('\n');
-					countEntries();
+					// A group-targeted window goes back into the pickers, so
+					// saving it keeps it a live group target. A host-list
+					// window round-trips through the paste box as before.
+					var reload;
 
-					return verify().then(function () {
+					if (data.target === 'group') {
+						setPickMode('select');
+						setMultiselect('groupids_', data.groups);
+						setMultiselect('hostids_', []);
+						clear($('ml-tags').tBodies[0]);
+						addTagRow();
+
+						reload = findSelected().then(function () {
+							if (state.dynamic_ok) {
+								setTarget('group');
+								renderTarget({});
+								showStepWindow();
+								updatePreview();
+							}
+						});
+					}
+					else {
+						setPickMode('paste');
+						input.value = data.hosts.join('\n');
+						countEntries();
+						reload = verify();
+					}
+
+					return reload.then(function () {
+						if (data.hidden_groups) {
+							$('ml-summary').appendChild(el('div', {
+								class: 'ml-banner',
+								text: data.hidden_groups + ' host group(s) in this window are outside your permissions. '
+									+ 'They stay in it whatever you do here.'
+							}));
+						}
+
 						if (data.hidden_count) {
 							$('ml-summary').appendChild(el('div', {
 								class: 'ml-banner',
@@ -1044,6 +1386,19 @@
 			rows.forEach(function (row) {
 				var hosts = el('div', {class: 'ml-card-hosts'});
 
+				// Group targets first, marked live: what gets suppressed is
+				// whoever is in the group when the window opens, not a list.
+				(row.groups || []).forEach(function (group) {
+					hosts.appendChild(el('span', {class: 'ml-hostchip ml-groupchip', text: group.name}));
+				});
+
+				if (row.hidden_groups) {
+					hosts.appendChild(el('span', {
+						class: 'ml-hostchip ml-muted',
+						text: '+' + row.hidden_groups + (row.hidden_groups === 1 ? ' group' : ' groups') + ' you cannot see'
+					}));
+				}
+
 				row.hosts.forEach(function (name) {
 					hosts.appendChild(el('span', {class: 'ml-hostchip', text: name}));
 				});
@@ -1142,7 +1497,12 @@
 					]),
 					el('div', {class: 'ml-card-meta', text: meta.join('  \u00B7  ')}),
 					el('div', {class: 'ml-card-meta ml-muted', text: row.since_text + ' \u2192 ' + row.till_text}),
-					el('div', {class: 'ml-card-count', text: row.host_count + (row.host_count === 1 ? ' host' : ' hosts')}),
+					el('div', {class: 'ml-card-count'}, [
+						row.dynamic ? el('span', {class: 'ml-pill ml-pill-live', text: 'live group'}) : null,
+						row.dynamic
+							? ' ' + row.group_members + (row.group_members === 1 ? ' host' : ' hosts') + ' in it now'
+							: row.host_count + (row.host_count === 1 ? ' host' : ' hosts')
+					]),
 					hosts
 				]));
 			});

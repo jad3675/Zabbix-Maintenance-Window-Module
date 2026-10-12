@@ -28,11 +28,10 @@ class MaintList extends Base {
 		$show_expired = (int) $this->getInput('show_expired', 0) === 1;
 
 		try {
-			$maintenances = $this->api()->call('maintenance.get', [
+			$maintenances = $this->fetchWindows([
 				'output' => ['maintenanceid', 'name', 'maintenance_type', 'description',
 					'active_since', 'active_till'
 				],
-				'selectHosts' => ['hostid', 'host', 'name'],
 				'selectTimeperiods' => 'extend',
 				'search' => ['name' => $this->namePrefix()],
 				'startSearch' => true
@@ -48,14 +47,20 @@ class MaintList extends Base {
 		// leaves nothing. A user should not learn about hosts through this
 		// page that they cannot see anywhere else in the frontend.
 		$all_hostids = [];
+		$all_groupids = [];
 
 		foreach ((array) $maintenances as $maintenance) {
-			foreach ((array) $maintenance['hosts'] as $host) {
+			foreach ($maintenance['hosts'] as $host) {
 				$all_hostids[$host['hostid']] = true;
+			}
+
+			foreach ($maintenance['groups'] as $group) {
+				$all_groupids[$group['groupid']] = true;
 			}
 		}
 
 		$visible = array_flip($this->visibleHostids(array_keys($all_hostids)));
+		$visible_groups = array_flip($this->visibleGroupids(array_keys($all_groupids)));
 
 		$now = time();
 		$rows = [];
@@ -73,7 +78,22 @@ class MaintList extends Base {
 				}
 			}
 
-			if (!$mine) {
+			// Group targets, trimmed the same way. A live group is shown by
+			// name with its current membership, which is the number that
+			// actually gets suppressed next time the window opens.
+			$groups = [];
+			$hidden_groups = 0;
+
+			foreach ($maintenance['groups'] as $group) {
+				if (array_key_exists($group['groupid'], $visible_groups)) {
+					$groups[] = ['groupid' => (string) $group['groupid'], 'name' => (string) $group['name']];
+				}
+				else {
+					$hidden_groups++;
+				}
+			}
+
+			if (!$mine && !$groups) {
 				continue;
 			}
 
@@ -120,6 +140,10 @@ class MaintList extends Base {
 				'till_text' => date('Y-m-d H:i', $till),
 				'host_count' => count($mine) + $hidden,
 				'hidden_count' => $hidden,
+				'groups' => $groups,
+				'hidden_groups' => $hidden_groups,
+				'group_members' => $groups ? $this->memberCount(array_column($groups, 'groupid')) : 0,
+				'dynamic' => (bool) $maintenance['groups'],
 				'hosts' => array_slice($mine, 0, 200),
 				'truncated' => count($mine) > 200,
 				'created_by' => $this->creator((string) $maintenance['description']),

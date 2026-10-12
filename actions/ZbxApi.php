@@ -122,23 +122,44 @@ class ZbxApi {
 	}
 
 	/**
-	 * maintenance.create/update took `hostids` and `groupids` up to 7.0, where
-	 * they were deprecated in favour of `hosts` and `groups`. 7.2 removed the
-	 * old names outright. Build whichever the target speaks.
+	 * Both target lists for maintenance.create/update, in whichever shape the
+	 * server speaks. Always sends BOTH keys, even when one is empty: on update,
+	 * omitting a key leaves the old list in place, so switching a window from
+	 * hosts to a group (or back) would otherwise keep the previous targets too.
 	 */
-	public function hostsParam(array $hostids): array {
-		[$major, $minor] = array_pad(array_map('intval', explode('.', $this->version())), 2, 0);
+	public function targetsParam(array $hostids, array $groupids): array {
+		[$major] = array_pad(array_map('intval', explode('.', $this->version())), 1, 0);
 
-		if ($major > 7 || ($major === 7 && $minor >= 0)) {
-			return ['hosts' => array_values(array_map(
-				static function ($hostid) {
-					return ['hostid' => (string) $hostid];
-				},
-				$hostids
-			))];
+		if ($major >= 7) {
+			return [
+				'hosts' => array_values(array_map(static function ($id) {
+					return ['hostid' => (string) $id];
+				}, $hostids)),
+				'groups' => array_values(array_map(static function ($id) {
+					return ['groupid' => (string) $id];
+				}, $groupids))
+			];
 		}
 
-		return ['hostids' => array_values(array_map('strval', $hostids))];
+		return [
+			'hostids' => array_values(array_map('strval', $hostids)),
+			'groupids' => array_values(array_map('strval', $groupids))
+		];
+	}
+
+	/**
+	 * maintenance.get option and result key for a window's host groups.
+	 * selectHostGroups / hostgroups since 6.2; the old selectGroups was
+	 * removed outright in 7.2.
+	 *
+	 * @return array [option name, result property]
+	 */
+	public function groupSelector(): array {
+		[$major, $minor] = array_pad(array_map('intval', explode('.', $this->version())), 2, 0);
+
+		return ($major > 6 || ($major === 6 && $minor >= 2))
+			? ['selectHostGroups', 'hostgroups']
+			: ['selectGroups', 'groups'];
 	}
 
 	/**

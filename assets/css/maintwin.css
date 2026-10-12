@@ -696,3 +696,71 @@
 	padding: 22px 10px !important;
 	text-align: center;
 }
+
+/* ------------------------------------------------- step 1 pick modes --- */
+
+.ml-mode-seg {
+	margin-bottom: 12px;
+}
+
+.ml-pickform {
+	margin: 0;
+}
+
+/*
+ * Zabbix's multiselect brings its own styling; just make sure it has room
+ * and does not fight the grid cell.
+ */
+.ml-pickform .multiselect {
+	max-width: 100%;
+}
+
+.ml-evaltype {
+	margin-bottom: 6px;
+}
+
+.ml-tagtable {
+	border-collapse: collapse;
+	margin-bottom: 4px;
+}
+
+.ml-tagtable td {
+	padding: 2px 6px 2px 0;
+	vertical-align: middle;
+}
+
+.ml-taginput,
+.ml-tagop {
+	background: rgba(128, 128, 128, .06);
+	border: 1px solid rgba(128, 128, 128, .35);
+	border-radius: 3px;
+	color: inherit;
+	font: inherit;
+	padding: 4px 7px;
+}
+
+.ml-taginput {
+	width: 180px;
+}
+
+/* ------------------------------------------------- live group targets --- */
+
+.ml-target {
+	border-left: 3px solid rgba(56, 132, 255, .7);
+	margin: 0 0 12px;
+	padding: 4px 0 4px 12px;
+}
+
+.ml-target .ml-hint-inline {
+	max-width: 80ch;
+}
+
+.ml-groupchip {
+	background: rgba(56, 132, 255, .18);
+	border: 1px solid rgba(56, 132, 255, .4);
+	font-weight: 600;
+}
+
+.ml-pill-live {
+	background: rgba(56, 132, 255, .28);
+}
